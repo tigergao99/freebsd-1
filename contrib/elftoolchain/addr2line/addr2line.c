@@ -86,13 +86,9 @@ static struct option longopts[] = {
 static int demangle, func, base, inlines, print_addr, pretty_print;
 static char unknown[] = { '?', '?', '\0' };
 static Dwarf_Addr section_base;
-static struct CU *last_cu;
-/* Need a new curlopc that stores last lopc value. 
- * We used to use locache to do this, but locache is not stable anymore 
- * as tree lookup updates cache. 
- */
-static Dwarf_Unsigned curlopc = ~0ULL; 
-static RB_HEAD(cutree, CU) head = RB_INITIALIZER(&head);
+static struct CU *culist;
+static Dwarf_Unsigned locache = ~0ULL, hicache = 0ULL;
+static Dwarf_Die last_die = NULL;
 
 #define	USAGE_MESSAGE	"\
 Usage: %s [options] hexaddress...\n\
@@ -689,40 +685,18 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 		goto status_ok;
 	}
 
-	/* Address isn't in cache. Check if it's in cutree. */
-	struct CU find, *res;
-	find.lopc = addr;
-	res = RB_NFIND(cutree, &head, &find);
-	if (res != NULL) {
-		/* go back one res if addr != res->lopc */
-		if (res->lopc != addr) {
-			res = RB_PREV(cutree, &head, res); 
-			/* res can be NULL when tree only has useless_node */
-		}
-		/* Found the potential CU, but have to check if addr falls in range */
-		if (res != NULL && addr >= res->lopc && addr < res->hipc) {
-			die = res->die;
-			cu = res;
-			last_cu = cu;
-			goto status_ok;
-		}
+
+	// using cache 
+	if (addr >= locache && addr < hicache) {
+		die = last_die;
+		goto status_ok;
+	} else if (last_die != NULL) {
+		// cache miss AND not new cu
+		goto next_cu;
 	}
 
-	while (true) {
-		/*
-		 * We resume the CU scan from the last place we found a match.
-		 * Because when we have 2 sequential addresses, and the second
-		 * one is of the next CU, it is faster to just go to the next CU
-		 * instead of starting from the beginning.
-		 */
-		ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL, NULL,
-		    &de);
-		if (ret == DW_DLV_NO_ENTRY) {
-			if (curlopc == ~0ULL)
-				goto out;
-			ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL,
-			    NULL, &de);
-		}
+	while ((ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL, NULL, 
+		&de)) == DW_DLV_OK) {
 		die = NULL;
 		while (dwarf_siblingof(dbg, die, &ret_die, &de) == DW_DLV_OK) {
 			if (die != NULL)
@@ -781,6 +755,13 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 			}
 		}
 	next_cu:
+		// if we got here, addr is not in this cu, clear cache
+		if (last_die != NULL) {
+			dwarf_dealloc(dbg, last_die, DW_DLA_DIE);
+			last_die = NULL;
+		}
+		locache = ~0ULL;
+		hicache = 0ULL;
 		if (die != NULL) {
 			dwarf_dealloc(dbg, die, DW_DLA_DIE);
 			die = NULL;
@@ -790,16 +771,12 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 	if (ret != DW_DLV_OK || die == NULL)
 		goto out;
 
-	/* Add this addr's CU info from brute force to tree */
-	RB_INSERT(cutree, &head, cu);
-
-	/* update curlopc. Not affected by tree or cache lookup. */
-	curlopc = lopc;
-
-	/* update single cache */
-	last_cu = cu;
+	locache = lopc;
+	hicache = hipc;
+	last_die = die;
 
 status_ok:
+	
 	switch (dwarf_srclines(die, &lbuf, &lcount, &de)) {
 	case DW_DLV_OK:
 		break;
@@ -898,6 +875,9 @@ out:
 	    range->srcfiles != NULL && f != NULL && f->inlined_caller != NULL)
 		print_inlines(range, f->inlined_caller, f->call_file,
 		    f->call_line);
+
+	if (die != NULL && (die != last_die))
+		dwarf_dealloc(dbg, die, DW_DLA_DIE);
 }
 
 static void
