@@ -87,7 +87,7 @@ static int demangle, func, base, inlines, print_addr, pretty_print;
 static char unknown[] = { '?', '?', '\0' };
 static Dwarf_Addr section_base;
 static struct CU *culist;
-static Dwarf_Unsigned locache, hicache;
+static Dwarf_Unsigned locache = ~0ULL, hicache;
 static Dwarf_Die last_die = NULL;
 
 #define	USAGE_MESSAGE	"\
@@ -726,6 +726,9 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 		ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL, NULL, 
 		    &de);
 		if (ret == DW_DLV_NO_ENTRY) {
+			if (locache == ~0ULL) {
+				goto out;
+			}
 			ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL, NULL,
 			    &de);
 		}
