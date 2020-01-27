@@ -710,7 +710,7 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 	}
 
 
-	if (addr >= locache && addr < hicache && die != NULL) {
+	if (addr >= locache && addr < hicache && last_die != NULL) {
 		die = last_die;
 		goto status_ok;
 	} else if (last_die != NULL) {
@@ -718,6 +718,11 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 	}
 
 	while (true) {
+		/*
+		 * We resume the CU scan from the last place we found a match. Because 
+		 * when we have 2 sequential addresses, and the second one is of the next CU, 
+		 * it is faster to just go to the next CU instead of starting from the beginning.
+		 */
 		ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL, NULL, 
 		    &de);
 		if (ret == DW_DLV_NO_ENTRY) {
