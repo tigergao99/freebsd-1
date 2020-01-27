@@ -719,8 +719,14 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 		goto next_cu;
 	}
 
-	while ((ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL, NULL, 
-		&de)) == DW_DLV_OK) {
+	while (true) {
+		ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL, NULL, 
+		&de);
+		// hit the last cu reset to first
+		if (ret == DW_DLV_NO_ENTRY) {
+			ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL, NULL,
+		    &de);
+		}
 		die = NULL;
 		while (dwarf_siblingof(dbg, die, &ret_die, &de) == DW_DLV_OK) {
 			if (die != NULL)
@@ -743,8 +749,9 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 		}
 		if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) ==
 		    DW_DLV_OK) {
-			if (lopc == curlopc) {
-				goto out;
+			if (lopc == locache) {
+				// can't find addr in all cu's
+				goto not_found;
 			}
 			if (dwarf_attrval_unsigned(die, DW_AT_high_pc, &hipc,
 			   &de) == DW_DLV_OK) {
@@ -784,8 +791,6 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 			dwarf_dealloc(dbg, last_die, DW_DLA_DIE);
 			last_die = NULL;
 		}
-		locache = ~0ULL;
-		hicache = 0ULL;
 		if (die != NULL) {
 			dwarf_dealloc(dbg, die, DW_DLA_DIE);
 			die = NULL;
@@ -793,6 +798,7 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 	}
 
 	if (ret != DW_DLV_OK || die == NULL)
+	not_found:
 		goto out;
 
 	locache = lopc;
