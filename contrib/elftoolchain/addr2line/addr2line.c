@@ -87,7 +87,7 @@ static int demangle, func, base, inlines, print_addr, pretty_print;
 static char unknown[] = { '?', '?', '\0' };
 static Dwarf_Addr section_base;
 static struct CU *culist;
-static Dwarf_Unsigned locache = ~0ULL, hicache = 0ULL;
+static Dwarf_Unsigned locache, hicache;
 static Dwarf_Die last_die = NULL;
 
 #define	USAGE_MESSAGE	"\
@@ -711,7 +711,7 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 
 
 	// using cache 
-	if (addr >= locache && addr < hicache) {
+	if (addr >= locache && addr < hicache && die != NULL) {
 		die = last_die;
 		goto status_ok;
 	} else if (last_die != NULL) {
@@ -751,7 +751,7 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 		    DW_DLV_OK) {
 			if (lopc == locache) {
 				// can't find addr in all cu's
-				goto not_found;
+				goto out;
 			}
 			if (dwarf_attrval_unsigned(die, DW_AT_high_pc, &hipc,
 			   &de) == DW_DLV_OK) {
@@ -786,23 +786,21 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 			}
 		}
 	next_cu:
-		// if we got here, addr is not in this cu, clear cache
-		if (last_die != NULL) {
-			dwarf_dealloc(dbg, last_die, DW_DLA_DIE);
-			last_die = NULL;
-		}
-		if (die != NULL) {
+		if (die != NULL && die != last_die) {
 			dwarf_dealloc(dbg, die, DW_DLA_DIE);
 			die = NULL;
 		}
 	}
 
 	if (ret != DW_DLV_OK || die == NULL)
-	not_found:
 		goto out;
 
 	locache = lopc;
 	hicache = hipc;
+	if (last_die != NULL) {
+		dwarf_dealloc(dbg, last_die, DW_DLA_DIE);
+		last_die = NULL;
+	}
 	last_die = die;
 
 status_ok:
