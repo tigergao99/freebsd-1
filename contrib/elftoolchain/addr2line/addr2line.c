@@ -686,19 +686,17 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 	}
 
 
-	// using cache 
 	if (addr >= locache && addr < hicache && die != NULL) {
 		die = last_die;
 		goto status_ok;
 	} else if (last_die != NULL) {
-		// cache miss AND not new cu
+
 		goto next_cu;
 	}
 
 	while (true) {
 		ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL, NULL, 
-		&de);
-		// hit the last cu reset to first
+		    &de);
 		if (ret == DW_DLV_NO_ENTRY) {
 			ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL, NULL,
 		    &de);
@@ -726,7 +724,6 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 		if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) ==
 		    DW_DLV_OK) {
 			if (lopc == locache) {
-				// can't find addr in all cu's
 				goto out;
 			}
 			if (dwarf_attrval_unsigned(die, DW_AT_high_pc, &hipc,
