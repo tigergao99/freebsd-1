@@ -714,7 +714,6 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 		die = last_die;
 		goto status_ok;
 	} else if (last_die != NULL) {
-
 		goto next_cu;
 	}
 
