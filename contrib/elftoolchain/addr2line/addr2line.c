@@ -698,7 +698,7 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 		    &de);
 		if (ret == DW_DLV_NO_ENTRY) {
 			ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL, NULL,
-		    &de);
+			    &de);
 		}
 		die = NULL;
 		while (dwarf_siblingof(dbg, die, &ret_die, &de) == DW_DLV_OK) {
@@ -875,9 +875,6 @@ out:
 	    range->srcfiles != NULL && f != NULL && f->inlined_caller != NULL)
 		print_inlines(range, f->inlined_caller, f->call_file,
 		    f->call_line);
-
-	if (die != NULL && (die != last_die))
-		dwarf_dealloc(dbg, die, DW_DLA_DIE);
 }
 
 static void
