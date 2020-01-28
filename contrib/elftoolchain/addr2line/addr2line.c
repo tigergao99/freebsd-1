@@ -1065,6 +1065,10 @@ main(int argc, char **argv)
 			translate(dbg, e, line);
 	}
 
+	if (last_die != NULL) {
+		dwarf_dealloc(dbg, last_die, DW_DLA_DIE);
+	}
+
 	dwarf_finish(dbg, &de);
 
 	(void) elf_end(e);
