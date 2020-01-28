@@ -689,8 +689,6 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 	if (addr >= locache && addr < hicache && last_die != NULL) {
 		die = last_die;
 		goto status_ok;
-	} else if (last_die != NULL) {
-		goto next_cu;
 	}
 
 	while (true) {
