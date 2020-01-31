@@ -94,6 +94,15 @@ static struct CU *last_cu;
 static Dwarf_Unsigned curlopc = ~0ULL; 
 static RB_HEAD(cutree, CU) head = RB_INITIALIZER(&head);
 
+static int
+lopccmp(struct CU *e1, struct CU *e2) 
+{
+	return (e1->lopc < e2->lopc ? -1 : e1->lopc > e2->lopc);
+}
+
+RB_PROTOTYPE(cutree, CU, entry, lopccmp);
+RB_GENERATE(cutree, CU, entry, lopccmp)
+
 #define	USAGE_MESSAGE	"\
 Usage: %s [options] hexaddress...\n\
   Map program addresses to source file names and line numbers.\n\n\
@@ -110,15 +119,6 @@ Usage: %s [options] hexaddress...\n\
   -C      | --demangle        Demangle C++ names.\n\
   -H      | --help            Print a help message.\n\
   -V      | --version         Print a version identifier and exit.\n"
-
-static int
-lopccmp(struct CU *e1, struct CU *e2) 
-{
-	return (e1->lopc < e2->lopc ? -1 : e1->lopc > e2->lopc);
-}
-
-RB_PROTOTYPE(cutree, CU, entry, lopccmp);
-RB_GENERATE(cutree, CU, entry, lopccmp)
 
 static void
 usage(void)
@@ -685,6 +685,7 @@ check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 static void
 translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 {
+	struct CU find;
 	Dwarf_Die die, ret_die;
 	Dwarf_Line *lbuf;
 	Dwarf_Error de;
@@ -694,9 +695,9 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 	Dwarf_Addr lineaddr, plineaddr;
 	struct range *range;
 	struct Func *f;
+	struct CU *res;
 	const char *funcname;
 	char *file, *file0, *pfile;
-
 	char demangled[1024];
 	int ec, i, ret;
 
@@ -715,7 +716,6 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 	}
 
 	/* Address isn't in cache. Check if it's in cutree. */
-	struct CU find, *res;
 	find.lopc = addr;
 	res = RB_NFIND(cutree, &head, &find);
 	if (res != NULL) {
@@ -725,6 +725,15 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 			/* res can be NULL when tree only has useless_node */
 		}
 		/* Found the potential CU, but have to check if addr falls in range */
+		if (res != NULL && addr >= res->lopc && addr < res->hipc) {
+			die = res->die;
+			cu = res;
+			last_cu = cu;
+			goto status_ok;
+		}
+	} else {
+		/* We check the max node */
+		res = RB_MAX(cutree, &head);
 		if (res != NULL && addr >= res->lopc && addr < res->hipc) {
 			die = res->die;
 			cu = res;
@@ -1066,14 +1075,6 @@ main(int argc, char **argv)
 		find_section_base(exe, e, section);
 	else
 		section_base = 0;
-
-	/* Add a useless CU node so RB_NFIND can find the last node that has info */
-	struct CU *useless_node;
-	if ((useless_node = calloc(1, sizeof(*useless_node))) == NULL)
-			err(EXIT_FAILURE, "calloc");
-	useless_node->lopc = ~0ULL;
-	useless_node->hipc = 0ULL;
-	RB_INSERT(cutree, &head, useless_node);
 
 	if (argc > 0)
 		for (i = 0; i < argc; i++)
