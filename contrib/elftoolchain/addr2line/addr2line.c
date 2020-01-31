@@ -86,7 +86,6 @@ static struct option longopts[] = {
 static int demangle, func, base, inlines, print_addr, pretty_print;
 static char unknown[] = { '?', '?', '\0' };
 static Dwarf_Addr section_base;
-static struct CU *last_cu;
 /* Need a new curlopc that stores last lopc value. 
  * We used to use locache to do this, but locache is not stable anymore 
  * as tree lookup updates cache. 
@@ -409,13 +408,7 @@ culookup(struct CU **cu, Dwarf_Die *die, Dwarf_Unsigned addr)
 {
 	struct range find, *res;
 
-	if (last_cu != NULL && addr >= last_cu->lopc && addr < last_cu->hipc) {
-		*cu = last_cu;
-		*die = last_cu->die;
-		return 0;
-	}
-
-	/* Address isn't in cache. Check if it's in cutree. */
+	/* Check if addr is in lookup tree */
 	find.lopc = addr;
 	res = RB_NFIND(cutree, &head, &find);
 	if (res != NULL) {
@@ -428,7 +421,6 @@ culookup(struct CU **cu, Dwarf_Die *die, Dwarf_Unsigned addr)
 		if (res != NULL && addr >= res->lopc && addr < res->hipc) {
 			*die = res->die;
 			*cu = res;
-			last_cu = *cu;
 			return 0;
 		}
 	} else if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) ==
@@ -457,7 +449,6 @@ culookup(struct CU **cu, Dwarf_Die *die, Dwarf_Unsigned addr)
 		if (res != NULL && addr >= res->lopc && addr < res->hipc) {
 			*die = res->die;
 			*cu = res;
-			last_cu = *cu;
 			return 0;
 		}
 	}
@@ -567,8 +558,6 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 				/* update curlopc. Not affected by tree or cache lookup. */
 				curlopc = lopc;
 
-				/* update single cache */
-				last_cu = cu;
 				break;
 			}
 		}
