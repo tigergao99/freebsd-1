@@ -397,153 +397,15 @@ print_inlines(struct CU *cu, struct Func *f, Dwarf_Unsigned call_file,
 		    f->call_line);
 }
 
-static struct CU *
-culookup(Dwarf_Unsigned addr)
+static int
+culookup(struct CU **cu, Dwarf_Die *die, Dwarf_Unsigned addr)
 {
 	struct CU find, *res;
 
-	find.lopc = addr;
-	res = RB_NFIND(cutree, &cuhead, &find);
-	if (res != NULL) {
-		if (res->lopc != addr)
-			res = RB_PREV(cutree, &cuhead, res);
-		if (res != NULL && addr >= res->lopc && addr < res->hipc)
-			return (res);
-	} else {
-		res = RB_MAX(cutree, &cuhead);
-		if (res != NULL && addr >= res->lopc && addr < res->hipc)
-			return (res);
-	}
-	return (NULL);
-}
-
-/*
- * Check whether addr falls into range(s) of current CU, and save current CU
- * to lookup tree if so.
- */
-static int
-check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
-    struct range **range)
-{
-	Dwarf_Error de;
-	Dwarf_Unsigned addr_base, lopc, hipc;
-	Dwarf_Off ranges_off;
-	Dwarf_Signed ranges_cnt;
-	Dwarf_Ranges *ranges;
-	int i, ret;
-	bool in_range;
-
-	addr_base = 0;
-	ranges = NULL;
-	ranges_cnt = 0;
-	in_range = false;
-
-	ret = dwarf_attrval_unsigned(die, DW_AT_ranges, &ranges_off, &de);
-	if (ret == DW_DLV_NO_ENTRY) {
-		if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) ==
-		    DW_DLV_OK) {
-			if (lopc == curlopc)
-				return (DW_DLV_ERROR);
-			if (dwarf_attrval_unsigned(die, DW_AT_high_pc, &hipc,
-				&de) == DW_DLV_OK) {
-				/*
-				 * Check if the address falls into the PC
-				 * range of this CU.
-				 */
-				if (handle_high_pc(die, lopc, &hipc) !=
-					DW_DLV_OK)
-					return (DW_DLV_ERROR);
-			} else {
-				/* Assume ~0ULL if DW_AT_high_pc not present */
-				hipc = ~0ULL;
-			}
-
-			if (addr >= lopc && addr < hipc) {
-				in_range = true;
-			}
-		}
-	} else if (ret == DW_DLV_OK) {
-		ret = dwarf_get_ranges(dbg, ranges_off, &ranges,
-			&ranges_cnt, NULL, &de);
-		if (ret != DW_DLV_OK)
-			return (ret);
-
-		if (!ranges || ranges_cnt <= 0)
-			return (DW_DLV_ERROR);
-
-		for (i = 0; i < ranges_cnt; i++) {
-			if (ranges[i].dwr_type == DW_RANGES_END)
-				return (DW_DLV_NO_ENTRY);
-
-			if (ranges[i].dwr_type ==
-				DW_RANGES_ADDRESS_SELECTION) {
-				addr_base = ranges[i].dwr_addr2;
-				continue;
-			}
-
-			/* DW_RANGES_ENTRY */
-			lopc = ranges[i].dwr_addr1 + addr_base;
-			hipc = ranges[i].dwr_addr2 + addr_base;
-
-			if (lopc == curlopc)
-				return (DW_DLV_ERROR);
-
-			if (addr >= lopc && addr < hipc){
-				in_range = true;
-				break;
-			}
-		}
-	} else {
-		return (DW_DLV_ERROR);
-	}
-	
-	if (in_range) {
-		if ((*cu = calloc(1, sizeof(struct CU))) == NULL)
-			err(EXIT_FAILURE, "calloc");
-		(*cu)->lopc = lopc;
-		(*cu)->hipc = hipc;
-		(*cu)->die = die;
-		(*cu)->dbg = dbg;
-		STAILQ_INIT(&(*cu)->funclist);
-		RB_INSERT(cutree, &cuhead, *cu);
-		curlopc = lopc;
-		return (DW_DLV_OK);
-	} else {
-		return (DW_DLV_NO_ENTRY);
-	}
-}
-
-static void
-translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
-{
-	struct CU find;
-	Dwarf_Die die, ret_die;
-	Dwarf_Line *lbuf;
-	Dwarf_Error de;
-	Dwarf_Half tag;
-	Dwarf_Unsigned addr, lineno, plineno;
-	Dwarf_Signed lcount;
-	Dwarf_Addr lineaddr, plineaddr;
-	struct CU *cu;
-	struct Func *f;
-	struct CU *res;
-	const char *funcname;
-	char *file, *file0, *pfile;
-	char demangled[1024];
-	int ec, i, ret;
-
-	addr = strtoull(addrstr, NULL, 16);
-	addr += section_base;
-	lineno = 0;
-	file = unknown;
-	die = NULL;
-	ret = DW_DLV_OK;
-
-
 	if (last_cu != NULL && addr >= last_cu->lopc && addr < last_cu->hipc) {
-		cu = last_cu;
-		die = last_cu->die;
-		goto status_ok;
+		*cu = last_cu;
+		*die = last_cu->die;
+		return 0;
 	}
 
 	/* Address isn't in cache. Check if it's in cutree. */
@@ -557,22 +419,51 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 		}
 		/* Found the potential CU, but have to check if addr falls in range */
 		if (res != NULL && addr >= res->lopc && addr < res->hipc) {
-			die = res->die;
-			cu = res;
-			last_cu = cu;
-			goto status_ok;
+			*die = res->die;
+			*cu = res;
+			last_cu = *cu;
+			return 0;
 		}
 	} else {
 		/* We check the max node */
 		res = RB_MAX(cutree, &head);
 		if (res != NULL && addr >= res->lopc && addr < res->hipc) {
-			die = res->die;
-			cu = res;
-			last_cu = cu;
-			goto status_ok;
+			*die = res->die;
+			*cu = res;
+			last_cu = *cu;
+			return 0;
 		}
 	}
+	return 1;
+}
 
+static void
+translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
+{
+	Dwarf_Die die, ret_die;
+	Dwarf_Line *lbuf;
+	Dwarf_Error de;
+	Dwarf_Half tag;
+	Dwarf_Unsigned addr, lineno, plineno;
+	Dwarf_Signed lcount;
+	Dwarf_Addr lineaddr, plineaddr;
+	struct CU *cu;
+	struct Func *f;
+	const char *funcname;
+	char *file, *file0, *pfile;
+	char demangled[1024];
+	int ec, i, ret;
+
+	addr = strtoull(addrstr, NULL, 16);
+	addr += section_base;
+	lineno = 0;
+	file = unknown;
+	die = NULL;
+	ret = DW_DLV_OK;
+
+	if (culookup(&cu, &die, addr) == 0) {
+		goto status_ok;
+	}
 	while (true) {
 		/*
 		 * We resume the CU scan from the last place we found a match. Because 
@@ -642,6 +533,15 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 				cu->hipc = hipc;
 				cu->die = die;
 				STAILQ_INIT(&cu->funclist);
+
+				/* Add this addr's CU info from brute force to tree */
+				RB_INSERT(cutree, &head, cu);
+
+				/* update curlopc. Not affected by tree or cache lookup. */
+				curlopc = lopc;
+
+				/* update single cache */
+				last_cu = cu;
 				break;
 			}
 		}
@@ -654,15 +554,6 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 
 	if (ret != DW_DLV_OK || die == NULL)
 		goto out;
-
-	/* Add this addr's CU info from brute force to tree */
-	RB_INSERT(cutree, &head, cu);
-
-	/* update curlopc. Not affected by tree or cache lookup. */
-	curlopc = lopc;
-
-	/* update single cache */
-	last_cu = cu;
 
 status_ok:
 	
