@@ -556,7 +556,7 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 				/* Add this addr's CU info from brute force to tree */
 				RB_INSERT(cutree, &head, cu);
 
-				/* update curlopc. Not affected by tree or cache lookup. */
+				/* update curlopc. Not affected by tree lookup. */
 				curlopc = lopc;
 
 				break;
