@@ -405,216 +405,32 @@ print_inlines(struct range *range, struct Func *f, Dwarf_Unsigned call_file,
 		    f->call_line);
 }
 
-static struct range *
-culookup(Dwarf_Unsigned addr)
+static int
+culookup(struct CU **cu, Dwarf_Die *die, Dwarf_Unsigned addr)
 {
 	struct range find, *res;
 
+	if (last_cu != NULL && addr >= last_cu->lopc && addr < last_cu->hipc) {
+		*cu = last_cu;
+		*die = last_cu->die;
+		return 0;
+	}
+
+	/* Address isn't in cache. Check if it's in cutree. */
 	find.lopc = addr;
-	res = RB_NFIND(cutree, &cuhead, &find);
+	res = RB_NFIND(cutree, &head, &find);
 	if (res != NULL) {
-		if (res->lopc != addr)
-			res = RB_PREV(cutree, &cuhead, res);
-		if (res != NULL && addr >= res->lopc && addr < res->hipc)
-			return (res);
-	} else {
-		res = RB_MAX(cutree, &cuhead);
-		if (res != NULL && addr >= res->lopc && addr < res->hipc)
-			return (res);
-	}
-	return (NULL);
-}
-
-/*
- * When DW_AT_ranges, DW_AT_low_pc/DW_AT_high_pc are all absent, we check the
- * children of cu die for labels.  If the address falls into one of the labels
- * ranges(aranges), return the label DIE.
- */
-static int
-check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
-    struct range **range) {
-	Dwarf_Addr start;
-	Dwarf_Arange *aranges;
-	Dwarf_Die prev_die, ret_die;
-	Dwarf_Error de;
-	Dwarf_Half tag;
-	Dwarf_Off die_off;
-	Dwarf_Unsigned lopc, length;
-	Dwarf_Signed arcnt;
-	struct range *labelp, **labels;
-	int i, j, label_cnt, ret;
-
-	prev_die = ret_die = NULL;
-	labels = NULL;
-	i = label_cnt = 0;
-
-	/* Find aranges. */
-	ret = dwarf_get_aranges(dbg, &aranges, &arcnt, &de);
-	if (ret != DW_DLV_OK && ret != DW_DLV_NO_ENTRY)
-		warnx("dwarf_get_aranges failed: %s", dwarf_errmsg(de));
-
-	/* Child of current CU. */
-	ret = dwarf_child(die, &prev_die, &de);
-	if (ret == DW_DLV_ERROR)
-		warnx("dwarf_child: %s", dwarf_errmsg(de));
-
-	/* Count labels. */
-	while (1) {
-		if (dwarf_tag(prev_die, &tag, &de) != DW_DLV_OK) {
-			warnx("dwarf_tag failed: %s",
-				dwarf_errmsg(de));
-			return DW_DLV_ERROR;
+		/* go back one res if addr != res->lopc */
+		if (res->lopc != addr) {
+			res = RB_PREV(cutree, &head, res); 
+			/* res can be NULL when tree only has useless_node */
 		}
-		if (tag == DW_TAG_label) {
-			if (dwarf_attrval_unsigned(prev_die, DW_AT_low_pc,
-			    &lopc, &de) == DW_DLV_OK)
-				label_cnt++;
-		}
-
-		if (dwarf_siblingof(dbg, prev_die, &ret_die, &de) != DW_DLV_OK)
-			break;
-
-		if (prev_die != NULL)
-			dwarf_dealloc(dbg, prev_die, DW_DLA_DIE);
-		prev_die = ret_die;
-	}
-
-	if (label_cnt == 0)
-		return (DW_DLV_NO_ENTRY);
-
-	/* Allocate space for labels. */
-	if ((labels = calloc(label_cnt, sizeof(struct range *))) == NULL)
-		err(EXIT_FAILURE, "calloc");
-
-	/* Add labels to list. */
-	ret = dwarf_child(die, &prev_die, &de);
-	if (ret == DW_DLV_ERROR)
-		warnx("dwarf_child: %s", dwarf_errmsg(de));
-	while (1) {
-		if (dwarf_tag(prev_die, &tag, &de) != DW_DLV_OK) {
-			warnx("dwarf_tag failed: %s",
-				dwarf_errmsg(de));
-			free(labels);
-			return DW_DLV_ERROR;
-		}
-		if (tag == DW_TAG_label) {
-			if (dwarf_attrval_unsigned(prev_die, DW_AT_low_pc,
-			    &lopc, &de) == DW_DLV_OK) {
-				if (curlopc == lopc) {
-					for (i = 0; i < label_cnt - 1; i++) {
-						if (labels[i] != *range)
-							free(labels[i]);
-					}
-					free(labels);
-					return DW_DLV_ERROR;
-				}
-				labelp = calloc(1, sizeof(struct range));
-				if (labelp == NULL)
-					err(EXIT_FAILURE, "calloc");
-				labelp->lopc = lopc;
-				labelp->die = prev_die;
-				labelp->dbg = dbg;
-				STAILQ_INIT(&labelp->funclist);
-				labels[i++] = labelp;
-			}
-		}
-		if (dwarf_siblingof(dbg, prev_die, &ret_die, &de) != DW_DLV_OK)
-			break;
-		if (prev_die != NULL && tag != DW_TAG_label)
-			dwarf_dealloc(dbg, prev_die, DW_DLA_DIE);
-		prev_die = ret_die;
-	}
-
-	/* Set hipc for each label using aranges */
-	for (i = 0; i < label_cnt; i++) {
-		for (j = 0; j < arcnt; j++) {
-			if (dwarf_get_arange_info(aranges[j], &start, &length,
-			    &die_off, &de) != DW_DLV_OK) {
-				warnx("dwarf_get_arange_info failed: %s",
-					dwarf_errmsg(de));
-				continue;
-			}
-			if (labels[i]->lopc == (Dwarf_Unsigned)start) {
-				labels[i]->hipc = start + length;
-				break;
-			}
-		}
-	}
-
-	/* If addr in label's range, we have found the range for this label. */
-	for (i = 0; i < label_cnt; i++) {
-		if (addr >= labels[i]->lopc && addr < labels[i]->hipc) {
-			*range = labels[i];
-			RB_INSERT(cutree, &cuhead, (*range));
-			curlopc = (*range)->lopc;
-			break;
-		}
-	}
-
-	for (i = 0; i < label_cnt - 1; i++) {
-		if (labels[i] != *range)
-			free(labels[i]);
-	}
-	free(labels);
-
-	if (*range != NULL)
-		return (DW_DLV_OK);
-	else
-		return (DW_DLV_NO_ENTRY);
-}
-
-/*
- * Check whether addr falls into range(s) of current CU.
- * If so, save current CU to lookup tree.
- */
-static int
-check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
-    struct range **range)
-{
-	Dwarf_Error de;
-	Dwarf_Unsigned addr_base, lopc, hipc;
-	Dwarf_Off ranges_off;
-	Dwarf_Signed ranges_cnt;
-	Dwarf_Ranges *ranges;
-	int i, ret;
-	bool in_cu;
-
-	addr_base = 0;
-	ranges = NULL;
-	ranges_cnt = 0;
-	in_cu = false;
-
-	if (dwarf_attrval_unsigned(die, DW_AT_ranges, &ranges_off, &de) ==
-	    DW_DLV_OK) {
-		ret = dwarf_get_ranges(dbg, ranges_off, &ranges,
-			&ranges_cnt, NULL, &de);
-		if (ret != DW_DLV_OK)
-			return (ret);
-
-		if (!ranges || ranges_cnt <= 0)
-			return (DW_DLV_ERROR);
-
-		for (i = 0; i < ranges_cnt; i++) {
-			if (ranges[i].dwr_type == DW_RANGES_END)
-				return (DW_DLV_NO_ENTRY);
-
-			if (ranges[i].dwr_type ==
-				DW_RANGES_ADDRESS_SELECTION) {
-				addr_base = ranges[i].dwr_addr2;
-				continue;
-			}
-
-			/* DW_RANGES_ENTRY */
-			lopc = ranges[i].dwr_addr1 + addr_base;
-			hipc = ranges[i].dwr_addr2 + addr_base;
-
-			if (lopc == curlopc)
-				return (DW_DLV_ERROR);
-
-			if (addr >= lopc && addr < hipc){
-				in_cu = true;
-				break;
-			}
+		/* Found the potential CU, but have to check if addr falls in range */
+		if (res != NULL && addr >= res->lopc && addr < res->hipc) {
+			*die = res->die;
+			*cu = res;
+			last_cu = *cu;
+			return 0;
 		}
 	} else if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) ==
 	    DW_DLV_OK) {
@@ -637,31 +453,21 @@ check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 			in_cu = true;
 		}
 	} else {
-		/* Addr not found above, try labels. */
-		ret = check_labels(dbg, die, addr, range);
-		return ret;
+		/* We check the max node */
+		res = RB_MAX(cutree, &head);
+		if (res != NULL && addr >= res->lopc && addr < res->hipc) {
+			*die = res->die;
+			*cu = res;
+			last_cu = *cu;
+			return 0;
+		}
 	}
-
-	if (in_cu) {
-		if ((*range = calloc(1, sizeof(struct range))) == NULL)
-			err(EXIT_FAILURE, "calloc");
-		(*range)->lopc = lopc;
-		(*range)->hipc = hipc;
-		(*range)->die = die;
-		(*range)->dbg = dbg;
-		STAILQ_INIT(&(*range)->funclist);
-		RB_INSERT(cutree, &cuhead, *range);
-		curlopc = lopc;
-		return (DW_DLV_OK);
-	} else {
-		return (DW_DLV_NO_ENTRY);
-	}
+	return 1;
 }
 
 static void
 translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 {
-	struct CU find;
 	Dwarf_Die die, ret_die;
 	Dwarf_Line *lbuf;
 	Dwarf_Error de;
@@ -671,7 +477,6 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 	Dwarf_Addr lineaddr, plineaddr;
 	struct range *range;
 	struct Func *f;
-	struct CU *res;
 	const char *funcname;
 	char *file, *file0, *pfile;
 	char demangled[1024];
@@ -684,40 +489,9 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 	die = NULL;
 	ret = DW_DLV_OK;
 
-
-	if (last_cu != NULL && addr >= last_cu->lopc && addr < last_cu->hipc) {
-		cu = last_cu;
-		die = last_cu->die;
+	if (culookup(&cu, &die, addr) == 0) {
 		goto status_ok;
 	}
-
-	/* Address isn't in cache. Check if it's in cutree. */
-	find.lopc = addr;
-	res = RB_NFIND(cutree, &head, &find);
-	if (res != NULL) {
-		/* go back one res if addr != res->lopc */
-		if (res->lopc != addr) {
-			res = RB_PREV(cutree, &head, res); 
-			/* res can be NULL when tree only has useless_node */
-		}
-		/* Found the potential CU, but have to check if addr falls in range */
-		if (res != NULL && addr >= res->lopc && addr < res->hipc) {
-			die = res->die;
-			cu = res;
-			last_cu = cu;
-			goto status_ok;
-		}
-	} else {
-		/* We check the max node */
-		res = RB_MAX(cutree, &head);
-		if (res != NULL && addr >= res->lopc && addr < res->hipc) {
-			die = res->die;
-			cu = res;
-			last_cu = cu;
-			goto status_ok;
-		}
-	}
-
 	while (true) {
 		/*
 		 * We resume the CU scan from the last place we found a match. Because 
@@ -787,6 +561,15 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 				cu->hipc = hipc;
 				cu->die = die;
 				STAILQ_INIT(&cu->funclist);
+
+				/* Add this addr's CU info from brute force to tree */
+				RB_INSERT(cutree, &head, cu);
+
+				/* update curlopc. Not affected by tree or cache lookup. */
+				curlopc = lopc;
+
+				/* update single cache */
+				last_cu = cu;
 				break;
 			}
 		}
@@ -799,15 +582,6 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 
 	if (ret != DW_DLV_OK || die == NULL)
 		goto out;
-
-	/* Add this addr's CU info from brute force to tree */
-	RB_INSERT(cutree, &head, cu);
-
-	/* update curlopc. Not affected by tree or cache lookup. */
-	curlopc = lopc;
-
-	/* update single cache */
-	last_cu = cu;
 
 status_ok:
 	
