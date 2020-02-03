@@ -86,10 +86,7 @@ static struct option longopts[] = {
 static int demangle, func, base, inlines, print_addr, pretty_print;
 static char unknown[] = { '?', '?', '\0' };
 static Dwarf_Addr section_base;
-/* Need a new curlopc that stores last lopc value. 
- * We used to use locache to do this, but locache is not stable anymore 
- * as tree lookup updates cache. 
- */
+/* Need a new curlopc that stores last lopc value. */
 static Dwarf_Unsigned curlopc = ~0ULL; 
 static RB_HEAD(cutree, CU) head = RB_INITIALIZER(&head);
 
@@ -483,6 +480,7 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 	if (culookup(&cu, &die, addr) == 0) {
 		goto status_ok;
 	}
+	
 	while (true) {
 		/*
 		 * We resume the CU scan from the last place we found a match. Because 
