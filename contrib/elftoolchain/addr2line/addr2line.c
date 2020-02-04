@@ -66,7 +66,6 @@ struct range {
 	Dwarf_Signed nsrcfiles;
 	STAILQ_HEAD(, Func) funclist;
 	Dwarf_Die die;
-	Dwarf_Debug dbg;
 };
 
 static struct option longopts[] = {
@@ -87,18 +86,13 @@ static struct option longopts[] = {
 static int demangle, func, base, inlines, print_addr, pretty_print;
 static char unknown[] = { '?', '?', '\0' };
 static Dwarf_Addr section_base;
-/* Need a new curlopc that stores last lopc value. */
-static Dwarf_Unsigned curlopc = ~0ULL;
-static RB_HEAD(cutree, range) cuhead = RB_INITIALIZER(&cuhead);
-
-static int
-lopccmp(struct range *e1, struct range *e2)
-{
-	return (e1->lopc < e2->lopc ? -1 : e1->lopc > e2->lopc);
-}
-
-RB_PROTOTYPE(cutree, range, entry, lopccmp);
-RB_GENERATE(cutree, range, entry, lopccmp)
+static struct CU *last_cu;
+/* Need a new curlopc that stores last lopc value. 
+ * We used to use locache to do this, but locache is not stable anymore 
+ * as tree lookup updates cache. 
+ */
+static Dwarf_Unsigned curlopc = ~0ULL; 
+static RB_HEAD(cutree, CU) head = RB_INITIALIZER(&head);
 
 #define	USAGE_MESSAGE	"\
 Usage: %s [options] hexaddress...\n\
@@ -116,6 +110,15 @@ Usage: %s [options] hexaddress...\n\
   -C      | --demangle        Demangle C++ names.\n\
   -H      | --help            Print a help message.\n\
   -V      | --version         Print a version identifier and exit.\n"
+
+static int
+lopccmp(struct CU *e1, struct CU *e2) 
+{
+	return (e1->lopc < e2->lopc ? -1 : e1->lopc > e2->lopc);
+}
+
+RB_PROTOTYPE(cutree, CU, entry, lopccmp);
+RB_GENERATE(cutree, CU, entry, lopccmp)
 
 static void
 usage(void)
@@ -679,11 +682,30 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 	die = NULL;
 	ret = DW_DLV_OK;
 
-	range = culookup(addr);
-	if (range != NULL) {
-		die = range->die;
-		dbg = range->dbg;
+
+	if (last_cu != NULL && addr >= last_cu->lopc && addr < last_cu->hipc) {
+		cu = last_cu;
+		die = last_cu->die;
 		goto status_ok;
+	}
+
+	/* Address isn't in cache. Check if it's in cutree. */
+	struct CU find, *res;
+	find.lopc = addr;
+	res = RB_NFIND(cutree, &head, &find);
+	if (res != NULL) {
+		/* go back one res if addr != res->lopc */
+		if (res->lopc != addr) {
+			res = RB_PREV(cutree, &head, res); 
+			/* res can be NULL when tree only has useless_node */
+		}
+		/* Found the potential CU, but have to check if addr falls in range */
+		if (res != NULL && addr >= res->lopc && addr < res->hipc) {
+			die = res->die;
+			cu = res;
+			last_cu = cu;
+			goto status_ok;
+		}
 	}
 
 	while (true) {
@@ -721,12 +743,44 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 			warnx("could not find DW_TAG_compile_unit die");
 			goto next_cu;
 		}
-		ret = check_range(dbg, die, addr, &range);
-		if (ret == DW_DLV_OK)
-			break;
-		if (ret == DW_DLV_ERROR)
-			goto out;
-next_cu:
+		if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) ==
+		    DW_DLV_OK) {
+			if (lopc == curlopc) {
+				goto out;
+			}
+			if (dwarf_attrval_unsigned(die, DW_AT_high_pc, &hipc,
+			   &de) == DW_DLV_OK) {
+				/*
+				 * Check if the address falls into the PC
+				 * range of this CU.
+				 */
+				if (handle_high_pc(die, lopc, &hipc) !=
+				    DW_DLV_OK)
+					goto out;
+			} else {
+				/* Assume ~0ULL if DW_AT_high_pc not present */
+				hipc = ~0ULL;
+			}
+
+			if (dwarf_dieoffset(die, &off, &de) != DW_DLV_OK) {
+				warnx("dwarf_dieoffset failed: %s",
+				    dwarf_errmsg(de));
+				goto out;
+			}
+
+			if (addr >= lopc && addr < hipc) {
+				if ((cu = calloc(1, sizeof(*cu))) == NULL) {
+					err(EXIT_FAILURE, "calloc");
+				}
+				cu->off = off;
+				cu->lopc = lopc;
+				cu->hipc = hipc;
+				cu->die = die;
+				STAILQ_INIT(&cu->funclist);
+				break;
+			}
+		}
+	next_cu:
 		if (die != NULL) {
 			dwarf_dealloc(dbg, die, DW_DLA_DIE);
 			die = NULL;
@@ -735,6 +789,15 @@ next_cu:
 
 	if (ret != DW_DLV_OK || die == NULL)
 		goto out;
+
+	/* Add this addr's CU info from brute force to tree */
+	RB_INSERT(cutree, &head, cu);
+
+	/* update curlopc. Not affected by tree or cache lookup. */
+	curlopc = lopc;
+
+	/* update single cache */
+	last_cu = cu;
 
 status_ok:
 	switch (dwarf_srclines(die, &lbuf, &lcount, &de)) {
@@ -977,6 +1040,14 @@ main(int argc, char **argv)
 		find_section_base(exe, e, section);
 	else
 		section_base = 0;
+
+	/* Add a useless CU node so RB_NFIND can find the last node that has info */
+	struct CU *useless_node;
+	if ((useless_node = calloc(1, sizeof(*useless_node))) == NULL)
+			err(EXIT_FAILURE, "calloc");
+	useless_node->lopc = ~0ULL;
+	useless_node->hipc = 0ULL;
+	RB_INSERT(cutree, &head, useless_node);
 
 	if (argc > 0)
 		for (i = 0; i < argc; i++)
