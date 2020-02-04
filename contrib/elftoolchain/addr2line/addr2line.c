@@ -516,51 +516,12 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 			warnx("could not find DW_TAG_compile_unit die");
 			goto next_cu;
 		}
-		if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) ==
-		    DW_DLV_OK) {
-			if (lopc == curlopc) {
-				goto out;
-			}
-			if (dwarf_attrval_unsigned(die, DW_AT_high_pc, &hipc,
-			   &de) == DW_DLV_OK) {
-				/*
-				 * Check if the address falls into the PC
-				 * range of this CU.
-				 */
-				if (handle_high_pc(die, lopc, &hipc) !=
-				    DW_DLV_OK)
-					goto out;
-			} else {
-				/* Assume ~0ULL if DW_AT_high_pc not present */
-				hipc = ~0ULL;
-			}
-
-			if (dwarf_dieoffset(die, &off, &de) != DW_DLV_OK) {
-				warnx("dwarf_dieoffset failed: %s",
-				    dwarf_errmsg(de));
-				goto out;
-			}
-
-			if (addr >= lopc && addr < hipc) {
-				if ((cu = calloc(1, sizeof(*cu))) == NULL) {
-					err(EXIT_FAILURE, "calloc");
-				}
-				cu->off = off;
-				cu->lopc = lopc;
-				cu->hipc = hipc;
-				cu->die = die;
-				STAILQ_INIT(&cu->funclist);
-
-				/* Add this addr's CU info from brute force to tree */
-				RB_INSERT(cutree, &head, cu);
-
-				/* update curlopc. Not affected by tree lookup. */
-				curlopc = lopc;
-
-				break;
-			}
-		}
-	next_cu:
+		ret = check_range(dbg, die, addr, &cu);
+		if (ret == DW_DLV_OK)
+			break;
+		if (ret == DW_DLV_ERROR)
+			goto out;
+next_cu:
 		if (die != NULL) {
 			dwarf_dealloc(dbg, die, DW_DLA_DIE);
 			die = NULL;
