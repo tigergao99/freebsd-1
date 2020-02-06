@@ -409,16 +409,91 @@ culookup(struct CU **cu, Dwarf_Die *die, Dwarf_Unsigned addr)
 	find.lopc = addr;
 	res = RB_NFIND(cutree, &head, &find);
 	if (res != NULL) {
-		/* go back one res if addr != res->lopc */
-		if (res->lopc != addr) {
-			res = RB_PREV(cutree, &head, res); 
-			/* res can be NULL when tree only has useless_node */
+		if (res->lopc != addr)
+			res = RB_PREV(cutree, &cuhead, res);
+		if (res != NULL && addr >= res->lopc && addr < res->hipc)
+			return (res);
+	} else {
+		res = RB_MAX(cutree, &cuhead);
+		if (res != NULL && addr >= res->lopc && addr < res->hipc)
+			return (res);
+	}
+	return (NULL);
+}
+
+static int
+check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
+    struct CU **cu)
+{
+	Dwarf_Error de;
+	Dwarf_Unsigned addr_base, lopc, hipc;
+	Dwarf_Off off, ranges_off;
+	Dwarf_Signed ranges_cnt;
+	Dwarf_Ranges *ranges;
+	int i, ret;
+	bool in_range;
+
+	addr_base = 0;
+	ranges = NULL;
+	ranges_cnt = 0;
+	in_range = false;
+
+	ret = dwarf_attrval_unsigned(die, DW_AT_ranges, &ranges_off, &de);
+	if (ret == DW_DLV_NO_ENTRY) {
+		if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) ==
+		    DW_DLV_OK) {
+			if (lopc == curlopc)
+				return (DW_DLV_ERROR);
+			if (dwarf_attrval_unsigned(die, DW_AT_high_pc, &hipc,
+				&de) == DW_DLV_OK) {
+				/*
+				 * Check if the address falls into the PC
+				 * range of this CU.
+				 */
+				if (handle_high_pc(die, lopc, &hipc) !=
+					DW_DLV_OK)
+					return (DW_DLV_ERROR);
+			} else {
+				/* Assume ~0ULL if DW_AT_high_pc not present */
+				hipc = ~0ULL;
+			}
+
+			if (dwarf_dieoffset(die, &off, &de) != DW_DLV_OK) {
+				warnx("dwarf_dieoffset failed: %s",
+					dwarf_errmsg(de));
+				return (DW_DLV_ERROR);
+			}
+
+			if (addr >= lopc && addr < hipc) {
+				in_range = true;
+			}
 		}
-		/* Found the potential CU, but have to check if addr falls in range */
-		if (res != NULL && addr >= res->lopc && addr < res->hipc) {
-			*die = res->die;
-			*cu = res;
-			return 0;
+	} else if (ret == (DW_DLV_OK)) {
+		ret = dwarf_get_ranges(dbg, ranges_off, &ranges,
+			&ranges_cnt, NULL, &de);
+		if (ret != DW_DLV_OK)
+			return (ret);
+
+		if (!ranges || ranges_cnt <= 0)
+			return (DW_DLV_ERROR);
+
+		for (i = 0; i < ranges_cnt; i++) {
+			if (ranges[i].dwr_type == DW_RANGES_END)
+				return (DW_DLV_NO_ENTRY);
+
+			if (ranges[i].dwr_type ==
+				DW_RANGES_ADDRESS_SELECTION) {
+				addr_base = ranges[i].dwr_addr2;
+				continue;
+			}
+
+			/* DW_RANGES_ENTRY */
+			lopc = ranges[i].dwr_addr1 + addr_base;
+			hipc = ranges[i].dwr_addr2 + addr_base;
+
+			if (addr >= lopc && addr < hipc){
+				in_range = true;
+			}
 		}
 	} else if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) ==
 	    DW_DLV_OK) {
@@ -449,7 +524,20 @@ culookup(struct CU **cu, Dwarf_Die *die, Dwarf_Unsigned addr)
 			return 0;
 		}
 	}
-	return 1;
+	
+	if (in_range) {
+		if ((*cu = calloc(1, sizeof(struct CU))) == NULL)
+			err(EXIT_FAILURE, "calloc");
+		(*cu)->lopc = lopc;
+		(*cu)->hipc = hipc;
+		(*cu)->die = die;
+		STAILQ_INIT(&(*cu)->funclist);
+		RB_INSERT(cutree, &cuhead, *cu);
+		curlopc = lopc;
+		return (DW_DLV_OK);
+	} else {
+		return (DW_DLV_NO_ENTRY);
+	}
 }
 
 static void
