@@ -427,7 +427,7 @@ check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 {
 	Dwarf_Error de;
 	Dwarf_Unsigned addr_base, lopc, hipc;
-	Dwarf_Off off, ranges_off;
+	Dwarf_Off ranges_off;
 	Dwarf_Signed ranges_cnt;
 	Dwarf_Ranges *ranges;
 	int i, ret;
@@ -458,17 +458,11 @@ check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 				hipc = ~0ULL;
 			}
 
-			if (dwarf_dieoffset(die, &off, &de) != DW_DLV_OK) {
-				warnx("dwarf_dieoffset failed: %s",
-					dwarf_errmsg(de));
-				return (DW_DLV_ERROR);
-			}
-
 			if (addr >= lopc && addr < hipc) {
 				in_range = true;
 			}
 		}
-	} else if (ret == (DW_DLV_OK)) {
+	} else if (ret == DW_DLV_OK) {
 		ret = dwarf_get_ranges(dbg, ranges_off, &ranges,
 			&ranges_cnt, NULL, &de);
 		if (ret != DW_DLV_OK)
@@ -493,6 +487,7 @@ check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 
 			if (addr >= lopc && addr < hipc){
 				in_range = true;
+				break;
 			}
 		}
 	} else if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) ==
