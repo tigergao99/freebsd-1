@@ -848,8 +848,8 @@ main(int argc, char **argv)
 	caph_cache_catpages();
 	if (caph_limit_stdio() < 0)
 		errx(EXIT_FAILURE, "failed to limit stdio rights");
-	/*if (caph_enter() < 0)
-		errx(EXIT_FAILURE, "failed to enter capability mode");*/
+	if (caph_enter() < 0)
+		errx(EXIT_FAILURE, "failed to enter capability mode");
 
 	if (dwarf_init(fd, DW_DLC_READ, NULL, NULL, &dbg, &de))
 		errx(EXIT_FAILURE, "dwarf_init: %s", dwarf_errmsg(de));
