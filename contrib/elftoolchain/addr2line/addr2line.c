@@ -66,6 +66,7 @@ struct range {
 	Dwarf_Signed nsrcfiles;
 	STAILQ_HEAD(, Func) funclist;
 	Dwarf_Die die;
+	Dwarf_Debug dbg;
 };
 
 static struct option longopts[] = {
@@ -526,6 +527,7 @@ check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 		(*cu)->lopc = lopc;
 		(*cu)->hipc = hipc;
 		(*cu)->die = die;
+		(*cu)->dbg = dbg;
 		STAILQ_INIT(&(*cu)->funclist);
 		RB_INSERT(cutree, &cuhead, *cu);
 		curlopc = lopc;
@@ -559,7 +561,10 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 	die = NULL;
 	ret = DW_DLV_OK;
 
-	if (culookup(&cu, &die, addr) == 0) {
+	cu = culookup(addr);
+	if (cu != NULL) {
+		die = cu->die;
+		dbg = cu->dbg;
 		goto status_ok;
 	}
 	
@@ -842,8 +847,8 @@ main(int argc, char **argv)
 	caph_cache_catpages();
 	if (caph_limit_stdio() < 0)
 		errx(EXIT_FAILURE, "failed to limit stdio rights");
-	if (caph_enter() < 0)
-		errx(EXIT_FAILURE, "failed to enter capability mode");
+	/*if (caph_enter() < 0)
+		errx(EXIT_FAILURE, "failed to enter capability mode");*/
 
 	if (dwarf_init(fd, DW_DLC_READ, NULL, NULL, &dbg, &de))
 		errx(EXIT_FAILURE, "dwarf_init: %s", dwarf_errmsg(de));
