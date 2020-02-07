@@ -341,8 +341,9 @@ create_scn(struct elfcopy *ecp)
 	GElf_Shdr	 ish;
 	size_t		 indx;
 	uint64_t	 oldndx, newndx;
-	int		 elferr, sec_flags, reorder;
-	bool		 sections_added;
+	int		 elferr, sec_flags, shstrtab_exist, reorder;
+
+	shstrtab_exist = 0;
 
 	/*
 	 * Insert a pseudo section that contains the ELF header
@@ -441,14 +442,15 @@ create_scn(struct elfcopy *ecp)
 		oldndx = newndx = SHN_UNDEF;
 		if (strcmp(name, ".symtab") != 0 &&
 		    strcmp(name, ".strtab") != 0) {
-			/* Add new sections before .shstrtab if we have one. */
+			/* Add sections before .shstrtab OR before last section 
+			 * if .shstrtab hasn't been added yet */
 			if (!strcmp(name, ".shstrtab")) {
 				/*
 				 * Add sections specified by --add-section and
 				 * gnu debuglink. we want these sections have
 				 * smaller index than .shstrtab section.
 				 */
-				sections_added = true;
+				shstrtab_exist = 1;
 				if (ecp->debuglink != NULL)
 					add_gnu_debuglink(ecp);
 				if (ecp->flags & SEC_ADD)
@@ -510,7 +512,8 @@ create_scn(struct elfcopy *ecp)
 
 		insert_to_sec_list(ecp, s, 0);
 	}
-	if (!sections_added) {
+
+	if (!shstrtab_exist) {
 		if (ecp->debuglink != NULL)
 			add_gnu_debuglink(ecp);
 		if (ecp->flags & SEC_ADD)
@@ -1455,9 +1458,12 @@ void
 init_shstrtab(struct elfcopy *ecp)
 {
 	Elf_Scn *shstrtab;
+	Elf *e;
 	GElf_Shdr shdr;
 	struct section *s;
 	size_t indx, sizehint;
+
+	e = ecp->ein;
 
 	if (elf_getshdrstrndx(ecp->ein, &indx) == 0) {
 		shstrtab = elf_getscn(ecp->ein, indx);
