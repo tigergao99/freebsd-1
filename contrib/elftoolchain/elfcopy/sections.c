@@ -1458,12 +1458,9 @@ void
 init_shstrtab(struct elfcopy *ecp)
 {
 	Elf_Scn *shstrtab;
-	Elf *e;
 	GElf_Shdr shdr;
 	struct section *s;
 	size_t indx, sizehint;
-
-	e = ecp->ein;
 
 	if (elf_getshdrstrndx(ecp->ein, &indx) == 0) {
 		shstrtab = elf_getscn(ecp->ein, indx);
