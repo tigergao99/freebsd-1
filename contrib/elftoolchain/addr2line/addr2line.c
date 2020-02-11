@@ -422,6 +422,8 @@ culookup(struct CU **cu, Dwarf_Die *die, Dwarf_Unsigned addr)
 	return (NULL);
 }
 
+/* This function checks whether addr falls into range(s) of current CU.
+ * If so, saves current CU to lookup tree */
 static int
 check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
     struct CU **cu)
