@@ -488,6 +488,9 @@ check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 			lopc = ranges[i].dwr_addr1 + addr_base;
 			hipc = ranges[i].dwr_addr2 + addr_base;
 
+			if (lopc == curlopc)
+				return (DW_DLV_ERROR);
+
 			if (addr >= lopc && addr < hipc){
 				in_range = true;
 				break;
