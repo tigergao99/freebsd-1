@@ -192,7 +192,7 @@ main(int argc, char *argv[])
 		err(1, "Unable to open system.syslog service");
 	cap_close(capcas);
 
-	if ((char)ch == 'p')
+	if (pristr != NULL)
 		pri = pencode(pristr);
 	if (tag == NULL)
 		tag = getlogin();
