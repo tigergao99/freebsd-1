@@ -84,9 +84,7 @@ static void	logmessage(int, const char *, const char *, const char *,
 		    struct socks *, ssize_t, const char *);
 static void	usage(void);
 
-#ifdef WITH_CASPER
 static cap_channel_t *capcas, *capsyslog;
-#endif
 #ifdef INET6
 static int family = PF_UNSPEC;	/* protocol family (IPv4, IPv6 or both) */
 #else
@@ -179,7 +177,7 @@ main(int argc, char *argv[])
 			errx(1, "-h option is missing.");
 		nsock = 0;
 	}
-#ifdef WITH_CASPER
+
 	capcas = cap_init();
 	if (capcas == NULL)
 		err(1, "Unable to contact Casper");
@@ -189,7 +187,7 @@ main(int argc, char *argv[])
 	if (capsyslog == NULL)
 		err(1, "Unable to open system.syslog service");
 	cap_close(capcas);
-#endif
+
 	if ((char)ch == 'p')
 		pri = pencode(optarg);
 	if (tag == NULL)
@@ -380,11 +378,7 @@ logmessage(int pri, const char *timestamp, const char *hostname,
 	int len, i, lsent;
 
 	if (nsock == 0) {
-#ifdef WITH_CASPER
 		cap_syslog(capsyslog, pri, "%s", buf);
-#else
-		syslog(pri, "%s", buf);
-#endif
 		return;
 	}
 	if ((len = asprintf(&line, "<%d>%s %s %s: %s", pri, timestamp,
