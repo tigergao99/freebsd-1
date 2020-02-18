@@ -197,11 +197,7 @@ main(int argc, char *argv[])
 		tag = getlogin();
 	/* setup for logging */
 	if (host == NULL)
-#ifdef WITH_CASPER
 		cap_openlog(capsyslog, tag, logflags, 0);
-#else
-		openlog(tag, logflags, 0);
-#endif
 
 #ifndef WITH_CASPER
 	(void) fclose(stdout);
