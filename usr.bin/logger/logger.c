@@ -52,12 +52,14 @@ __FBSDID("$FreeBSD$");
 #include <capsicum_helpers.h>
 #include <ctype.h>
 #include <err.h>
+#include <libcasper.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <casper/cap_syslog.h>
 
 #include <libcasper.h>
 #include <casper/cap_syslog.h>
@@ -84,7 +86,9 @@ static void	logmessage(int, const char *, const char *, const char *,
 		    struct socks *, ssize_t, const char *);
 static void	usage(void);
 
-static cap_channel_t *capsyslog;
+#ifdef WITH_CASPER
+static cap_channel_t *capcas, *capsyslog;
+#endif
 #ifdef INET6
 static int family = PF_UNSPEC;	/* protocol family (IPv4, IPv6 or both) */
 #else
@@ -151,7 +155,6 @@ main(int argc, char *argv[])
 			svcname = optarg;
 			break;
 		case 'p':		/* priority */
-			pristr = optarg;
 			break;
 		case 's':		/* log to standard error */
 			logflags |= LOG_PERROR;
@@ -178,26 +181,32 @@ main(int argc, char *argv[])
 			errx(1, "-h option is missing.");
 		nsock = 0;
 	}
-
+#ifdef WITH_CASPER
 	capcas = cap_init();
 	if (capcas == NULL)
 		err(1, "Unable to contact Casper");
-	caph_cache_catpages();
-	caph_cache_tzdata();
-	if (caph_enter() < 0 && errno != ENOSYS)
-		err(1, "Unable to enter capability mode");
+	if (cap_enter() < 0)
+			err(1, "Unable to enter capability mode");
 	capsyslog = cap_service_open(capcas, "system.syslog");
 	if (capsyslog == NULL)
 		err(1, "Unable to open system.syslog service");
 	cap_close(capcas);
-
-	if (pristr != NULL)
-		pri = pencode(pristr);
+#endif
+	if ((char)ch == 'p')
+		pri = pencode(optarg);
 	if (tag == NULL)
 		tag = getlogin();
 	/* setup for logging */
 	if (host == NULL)
+#ifdef WITH_CASPER
 		cap_openlog(capsyslog, tag, logflags, 0);
+#else
+		openlog(tag, logflags, 0);
+#endif
+
+#ifndef WITH_CASPER
+	(void) fclose(stdout);
+#endif
 
 	(void )time(&now);
 	(void )ctime_r(&now, tbuf);
@@ -373,7 +382,11 @@ logmessage(int pri, const char *timestamp, const char *hostname,
 	int len, i, lsent;
 
 	if (nsock == 0) {
+#ifdef WITH_CASPER
 		cap_syslog(capsyslog, pri, "%s", buf);
+#else
+		syslog(pri, "%s", buf);
+#endif
 		return;
 	}
 	if ((len = asprintf(&line, "<%d>%s %s %s: %s", pri, timestamp,
