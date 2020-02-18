@@ -52,13 +52,14 @@ __FBSDID("$FreeBSD$");
 #include <capsicum_helpers.h>
 #include <ctype.h>
 #include <err.h>
-#include <libcasper.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+
+#include <libcasper.h>
 #include <casper/cap_syslog.h>
 
 #include <libcasper.h>
