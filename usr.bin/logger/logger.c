@@ -154,6 +154,7 @@ main(int argc, char *argv[])
 			svcname = optarg;
 			break;
 		case 'p':		/* priority */
+			pristr = optarg;
 			break;
 		case 's':		/* log to standard error */
 			logflags |= LOG_PERROR;
@@ -192,7 +193,7 @@ main(int argc, char *argv[])
 	cap_close(capcas);
 
 	if ((char)ch == 'p')
-		pri = pencode(optarg);
+		pri = pencode(pristr);
 	if (tag == NULL)
 		tag = getlogin();
 	/* setup for logging */
