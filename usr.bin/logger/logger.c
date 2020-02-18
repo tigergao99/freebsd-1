@@ -199,10 +199,6 @@ main(int argc, char *argv[])
 	if (host == NULL)
 		cap_openlog(capsyslog, tag, logflags, 0);
 
-#ifndef WITH_CASPER
-	(void) fclose(stdout);
-#endif
-
 	(void )time(&now);
 	(void )ctime_r(&now, tbuf);
 	tbuf[19] = '\0';
