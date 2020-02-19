@@ -183,7 +183,7 @@ main(int argc, char *argv[])
 	if (capcas == NULL)
 		err(1, "Unable to contact Casper");
 	if (cap_enter() < 0)
-			err(1, "Unable to enter capability mode");
+		errx(EXIT_FAILURE, "failed to enter capability mode");
 	capsyslog = cap_service_open(capcas, "system.syslog");
 	if (capsyslog == NULL)
 		err(1, "Unable to open system.syslog service");
