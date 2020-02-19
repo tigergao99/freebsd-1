@@ -182,7 +182,9 @@ main(int argc, char *argv[])
 	capcas = cap_init();
 	if (capcas == NULL)
 		err(1, "Unable to contact Casper");
-	if (cap_enter() < 0 && errno != ENOSYS)
+	caph_cache_catpages();
+	caph_cache_tzdata();
+	if (caph_enter() < 0 && errno != ENOSYS)
 		err(1, "Unable to enter capability mode");
 	capsyslog = cap_service_open(capcas, "system.syslog");
 	if (capsyslog == NULL)
