@@ -87,7 +87,7 @@ static void	logmessage(int, const char *, const char *, const char *,
 		    struct socks *, ssize_t, const char *);
 static void	usage(void);
 
-static cap_channel_t *capcas, *capsyslog;
+static cap_channel_t *capsyslog;
 #ifdef INET6
 static int family = PF_UNSPEC;	/* protocol family (IPv4, IPv6 or both) */
 #else
