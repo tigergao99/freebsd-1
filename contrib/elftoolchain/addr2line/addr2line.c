@@ -259,21 +259,17 @@ collect_func(Dwarf_Debug dbg, Dwarf_Die die, struct Func *parent,
 		}
 
 		/*
-		 * Ranges pointer not found.  Search for DW_AT_low_pc, and
-		 * DW_AT_high_pc iff die is not a label.  Labels doesn't have
-		 * hipc attr. */
-		if (tag == DW_TAG_label) {
-			if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc,
-			    &de) != DW_DLV_OK)
-				goto cont_search;
-		} else {
-			if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc,
-			    &de) || dwarf_attrval_unsigned(die, DW_AT_high_pc,
-			    &hipc, &de))
-				goto cont_search;
-			if (handle_high_pc(die, lopc, &hipc) != DW_DLV_OK)
-				goto cont_search;
-		}
+		 * Search for DW_AT_low_pc/DW_AT_high_pc if ranges pointer
+		 * not found. Treat labels differently.
+		 */
+		if (tag == DW_TAG_label && 
+		    dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) == DW_DLV_OK)
+			goto get_func_name;
+		if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) ||
+		    dwarf_attrval_unsigned(die, DW_AT_high_pc, &hipc, &de))
+			goto cont_search;
+		if (handle_high_pc(die, lopc, &hipc) != DW_DLV_OK)
+			goto cont_search;
 
 	get_func_name:
 		/*
@@ -469,6 +465,9 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 		prev_die = ret_die;
 	}
 
+	if (label_cnt == 0)
+		return (DW_DLV_NO_ENTRY);
+
 	/* Allocate space for labels */
 	if ((labels = (struct CU **)calloc(label_cnt, sizeof(struct CU *))) == NULL)
 		err(EXIT_FAILURE, "calloc");
@@ -523,13 +522,7 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 	/* check in range */
 	for (i = 0; i < label_cnt; i++) {
 		if (addr >= labels[i]->lopc && addr < labels[i]->hipc) {
-			if ((*cu = calloc(1, sizeof(struct CU))) == NULL)
-					err(EXIT_FAILURE, "calloc");
-			(*cu)->lopc = labels[i]->lopc;
-			(*cu)->hipc = labels[i]->hipc;
-			(*cu)->die = prev_die;
-			(*cu)->dbg = dbg;
-			STAILQ_INIT(&(*cu)->funclist);
+			*cu = labels[i];
 			/* Add to cache */
 			RB_INSERT(cutree, &cuhead, (*cu));
 			curlopc = (*cu)->lopc;
@@ -797,8 +790,8 @@ out:
 			if (dwarf_srcfiles(die, &range->srcfiles,
 			    &range->nsrcfiles, &de))
 				warnx("dwarf_srcfiles: %s", dwarf_errmsg(de));
-		if (STAILQ_EMPTY(&range->funclist)) {
-			collect_func(dbg, range->die, NULL, range);
+		if (STAILQ_EMPTY(&cu->funclist)) {
+			collect_func(dbg, cu->die, NULL, cu);
 			die = NULL;
 		}
 		f = search_func(range, addr);
