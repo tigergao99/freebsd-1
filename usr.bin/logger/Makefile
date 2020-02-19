@@ -4,7 +4,6 @@
 .include <src.opts.mk>
 
 PROG=	logger
-LIBADD=	m
 
 .if ${MK_INET6_SUPPORT} != "no"
 CFLAGS+= -DINET6
