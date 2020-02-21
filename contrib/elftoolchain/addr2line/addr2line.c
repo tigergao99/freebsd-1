@@ -437,7 +437,8 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 	i = label_cnt = 0;
 
 	/* find aranges */
-	if (dwarf_get_aranges(dbg, &aranges, &arcnt, &de) != DW_DLV_OK) {
+	ret = dwarf_get_aranges(dbg, &aranges, &arcnt, &de);
+	if (ret != DW_DLV_OK && ret != DW_DLV_NO_ENTRY) {
 		warnx("dwarf_get_aranges failed: %s", dwarf_errmsg(de));
 	}
 
