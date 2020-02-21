@@ -419,19 +419,17 @@ culookup(struct CU **cu, Dwarf_Die *die, Dwarf_Unsigned addr)
 	return (NULL);
 }
 
-static int cmpfunc(const void *a, const void *b) {
-	return ((const struct CU *)a)->lopc - ((const struct CU *)b)->lopc;
-}
-
 static int
 check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
-    struct CU **cu) {
+    struct CU **cu, Dwarf_Arange *aranges, Dwarf_Signed arcnt) {
+	Dwarf_Addr start;
 	Dwarf_Die prev_die, ret_die;
 	Dwarf_Error de;
 	Dwarf_Half tag;
-	Dwarf_Unsigned lopc;
+	Dwarf_Off die_off;
+	Dwarf_Unsigned lopc, length;
 	struct CU *labelp, **labels;
-	int i, label_cnt, ret;
+	int i, j, label_cnt, ret;
 
 	prev_die = ret_die = NULL;
 	labels = NULL;
@@ -511,14 +509,22 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 		prev_die = ret_die;
 	}
 
-	/* sort labels*/
-	qsort(labels, label_cnt, sizeof(struct CU), cmpfunc);
-
-	/* set hipc, not sure what to do with the last label */
-	for (i = 0; i < label_cnt - 1; i++) {
-		labels[i]->hipc = labels[i + 1]->lopc;
+	/* set hipc using aranges */
+	for (i = 0; i < label_cnt; i++) {
+		for (j = 0; j < arcnt; j++) {
+			if (dwarf_get_arange_info(aranges[j], &start, &length,
+			    &die_off, &de) != DW_DLV_OK) {
+				warnx("dwarf_get_arange_info failed: %s",
+					dwarf_errmsg(de));
+				continue;
+			}
+			if (labels[i]->lopc == (Dwarf_Unsigned)start) {
+				labels[i]->hipc = start + length;
+				break;
+			}
+		}
 	}
-	labels[i]->hipc = ~0ULL;
+	
 	/* check in range */
 	for (i = 0; i < label_cnt; i++) {
 		if (addr >= labels[i]->lopc && addr < labels[i]->hipc) {
@@ -547,7 +553,7 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
  * If so, saves current CU to lookup tree */
 static int
 check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
-    struct CU **cu)
+    struct CU **cu, Dwarf_Arange *aranges, Dwarf_Signed arcnt)
 {
 	Dwarf_Error de;
 	Dwarf_Unsigned addr_base, lopc, hipc;
@@ -639,7 +645,7 @@ check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 			}
 		} else {
 			/* can't find addr in cu die, try labels */
-			ret = check_labels(dbg, die, addr, cu);
+			ret = check_labels(dbg, die, addr, cu, aranges, arcnt);
 			return ret;
 		}
 	}
@@ -661,7 +667,8 @@ check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 }
 
 static void
-translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
+translate(Dwarf_Debug dbg, Elf *e, const char* addrstr,
+    Dwarf_Arange *aranges, Dwarf_Signed arcnt)
 {
 	Dwarf_Die die, ret_die;
 	Dwarf_Line *lbuf;
@@ -726,7 +733,7 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 			warnx("could not find DW_TAG_compile_unit die");
 			goto next_cu;
 		}
-		ret = check_range(dbg, die, addr, &cu);
+		ret = check_range(dbg, die, addr, &cu, aranges, arcnt);
 		if (ret == DW_DLV_OK)
 			break;
 		if (ret == DW_DLV_ERROR)
@@ -907,8 +914,10 @@ main(int argc, char **argv)
 {
 	cap_rights_t rights;
 	Elf *e;
+	Dwarf_Arange *aranges;
 	Dwarf_Debug dbg;
 	Dwarf_Error de;
+	Dwarf_Signed arcnt;
 	const char *exe, *section;
 	char line[1024];
 	int fd, i, opt;
@@ -984,13 +993,17 @@ main(int argc, char **argv)
 	else
 		section_base = 0;
 
+	/* find aranges */
+	if (dwarf_get_aranges(dbg, &aranges, &arcnt, &de) != DW_DLV_OK) {
+		warnx("dwarf_get_aranges failed: %s", dwarf_errmsg(de));
+	}
 	if (argc > 0)
 		for (i = 0; i < argc; i++)
-			translate(dbg, e, argv[i]);
+			translate(dbg, e, argv[i], aranges, arcnt);
 	else {
 		setvbuf(stdout, NULL, _IOLBF, 0);
 		while (fgets(line, sizeof(line), stdin) != NULL)
-			translate(dbg, e, line);
+			translate(dbg, e, line, aranges, arcnt);
 	}
 
 	dwarf_finish(dbg, &de);
