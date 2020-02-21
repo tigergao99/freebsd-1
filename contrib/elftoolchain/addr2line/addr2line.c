@@ -57,8 +57,8 @@ struct Func {
 	STAILQ_ENTRY(Func) next;
 };
 
-struct CU {
-	RB_ENTRY(CU) entry;
+struct range {
+	RB_ENTRY(range) entry;
 	Dwarf_Debug dbg;
 	Dwarf_Die die;
 	Dwarf_Off off;
@@ -88,17 +88,17 @@ static int demangle, func, base, inlines, print_addr, pretty_print;
 static char unknown[] = { '?', '?', '\0' };
 static Dwarf_Addr section_base;
 /* Need a new curlopc that stores last lopc value. */
-static Dwarf_Unsigned curlopc = ~0ULL; 
-static RB_HEAD(cutree, CU) head = RB_INITIALIZER(&head);
+static Dwarf_Unsigned curlopc = ~0ULL;
+static RB_HEAD(cutree, range) cuhead = RB_INITIALIZER(&cuhead);
 
 static int
-lopccmp(struct CU *e1, struct CU *e2) 
+lopccmp(struct range *e1, struct range *e2)
 {
 	return (e1->lopc < e2->lopc ? -1 : e1->lopc > e2->lopc);
 }
 
-RB_PROTOTYPE(cutree, CU, entry, lopccmp);
-RB_GENERATE(cutree, CU, entry, lopccmp)
+RB_PROTOTYPE(cutree, range, entry, lopccmp);
+RB_GENERATE(cutree, range, entry, lopccmp)
 
 #define	USAGE_MESSAGE	"\
 Usage: %s [options] hexaddress...\n\
@@ -171,7 +171,7 @@ handle_high_pc(Dwarf_Die die, Dwarf_Unsigned lopc, Dwarf_Unsigned *hipc)
 }
 
 static struct Func *
-search_func(struct CU *cu, Dwarf_Unsigned addr)
+search_func(struct range *range, Dwarf_Unsigned addr)
 {
 	struct Func *f, *f0;
 	Dwarf_Unsigned lopc, hipc, addr_base;
@@ -179,7 +179,7 @@ search_func(struct CU *cu, Dwarf_Unsigned addr)
 
 	f0 = NULL;
 
-	STAILQ_FOREACH(f, &cu->funclist, next) {
+	STAILQ_FOREACH(f, &range->funclist, next) {
 		if (f->ranges != NULL) {
 			addr_base = 0;
 			for (i = 0; i < f->ranges_cnt; i++) {
@@ -216,7 +216,7 @@ search_func(struct CU *cu, Dwarf_Unsigned addr)
 }
 
 static void
-collect_func(Dwarf_Debug dbg, Dwarf_Die die, struct Func *parent, struct CU *cu)
+collect_func(Dwarf_Debug dbg, Dwarf_Die die, struct Func *parent, struct range *range)
 {
 	Dwarf_Die ret_die, abst_die, spec_die;
 	Dwarf_Error de;
@@ -326,7 +326,7 @@ collect_func(Dwarf_Debug dbg, Dwarf_Die die, struct Func *parent, struct CU *cu)
 			dwarf_attrval_unsigned(die, DW_AT_call_line,
 			    &f->call_line, &de);
 		}
-		STAILQ_INSERT_TAIL(&cu->funclist, f, next);
+		STAILQ_INSERT_TAIL(&range->funclist, f, next);
 	}
 
 cont_search:
@@ -337,9 +337,9 @@ cont_search:
 		warnx("dwarf_child: %s", dwarf_errmsg(de));
 	else if (ret == DW_DLV_OK) {
 		if (f != NULL)
-			collect_func(dbg, ret_die, f, cu);
+			collect_func(dbg, ret_die, f, range);
 		else
-			collect_func(dbg, ret_die, parent, cu);
+			collect_func(dbg, ret_die, parent, range);
 	}
 
 	/* Search sibling. */
@@ -347,10 +347,10 @@ cont_search:
 	if (ret == DW_DLV_ERROR)
 		warnx("dwarf_siblingof: %s", dwarf_errmsg(de));
 	else if (ret == DW_DLV_OK)
-		collect_func(dbg, ret_die, parent, cu);
+		collect_func(dbg, ret_die, parent, range);
 
 	/* Cleanup */
-	if (die != cu->die)
+	if (die != range->die)
 		dwarf_dealloc(dbg, die, DW_DLA_DIE);
 
 	if (abst_die != NULL)
@@ -361,14 +361,14 @@ cont_search:
 }
 
 static void
-print_inlines(struct CU *cu, struct Func *f, Dwarf_Unsigned call_file,
+print_inlines(struct range *range, struct Func *f, Dwarf_Unsigned call_file,
     Dwarf_Unsigned call_line)
 {
 	char demangled[1024];
 	char *file;
 
-	if (call_file > 0 && (Dwarf_Signed) call_file <= cu->nsrcfiles)
-		file = cu->srcfiles[call_file - 1];
+	if (call_file > 0 && (Dwarf_Signed) call_file <= range->nsrcfiles)
+		file = range->srcfiles[call_file - 1];
 	else
 		file = unknown;
 
@@ -393,14 +393,14 @@ print_inlines(struct CU *cu, struct Func *f, Dwarf_Unsigned call_file,
 	    (uintmax_t) call_line);
 
 	if (f->inlined_caller != NULL)
-		print_inlines(cu, f->inlined_caller, f->call_file,
+		print_inlines(range, f->inlined_caller, f->call_file,
 		    f->call_line);
 }
 
-static int
-culookup(struct CU **cu, Dwarf_Die *die, Dwarf_Unsigned addr)
+static struct range *
+culookup(Dwarf_Unsigned addr)
 {
-	struct CU find, *res;
+	struct range find, *res;
 
 	/* Check if addr is in lookup tree */
 	find.lopc = addr;
@@ -420,14 +420,14 @@ culookup(struct CU **cu, Dwarf_Die *die, Dwarf_Unsigned addr)
 
 static int
 check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
-    struct CU **cu, Dwarf_Arange *aranges, Dwarf_Signed arcnt) {
+    struct range **range, Dwarf_Arange *aranges, Dwarf_Signed arcnt) {
 	Dwarf_Addr start;
 	Dwarf_Die prev_die, ret_die;
 	Dwarf_Error de;
 	Dwarf_Half tag;
 	Dwarf_Off die_off;
 	Dwarf_Unsigned lopc, length;
-	struct CU *labelp, **labels;
+	struct range *labelp, **labels;
 	int i, j, label_cnt, ret;
 
 	prev_die = ret_die = NULL;
@@ -466,7 +466,7 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 		return (DW_DLV_NO_ENTRY);
 
 	/* Allocate space for labels */
-	if ((labels = (struct CU **)calloc(label_cnt, sizeof(struct CU *))) == NULL)
+	if ((labels = (struct range **)calloc(label_cnt, sizeof(struct range *))) == NULL)
 		err(EXIT_FAILURE, "calloc");
 	
 	/* Add labels to list */
@@ -485,13 +485,13 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 				if (curlopc == lopc) {
 					/* free memory */
 					for (i = 0; i < label_cnt - 1; i++) {
-						if (labels[i] != *cu)
+						if (labels[i] != *range)
 							free(labels[i]);
 					}
 					free(labels);
 					return DW_DLV_ERROR;	
 				}
-				if ((labelp = calloc(1, sizeof(struct CU))) == NULL)
+				if ((labelp = calloc(1, sizeof(struct range))) == NULL)
 					err(EXIT_FAILURE, "calloc");
 				labelp->lopc = lopc;
 				labelp->die = prev_die;
@@ -527,21 +527,21 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 	/* check in range */
 	for (i = 0; i < label_cnt; i++) {
 		if (addr >= labels[i]->lopc && addr < labels[i]->hipc) {
-			*cu = labels[i];
+			*range = labels[i];
 			/* Add to cache */
-			RB_INSERT(cutree, &cuhead, (*cu));
-			curlopc = (*cu)->lopc;
+			RB_INSERT(cutree, &cuhead, (*range));
+			curlopc = (*range)->lopc;
 			break;
 		}
 	}
 	/* free memory */
 	for (i = 0; i < label_cnt - 1; i++) {
-		if (labels[i] != *cu)
+		if (labels[i] != *range)
 			free(labels[i]);
 	}
 	free(labels);
 	/* return status */
-	if (*cu != NULL) {
+	if (*range != NULL) {
 		return (DW_DLV_OK);
 	} else {
 		return (DW_DLV_NO_ENTRY);
@@ -552,7 +552,7 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
  * If so, saves current CU to lookup tree */
 static int
 check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
-    struct CU **cu, Dwarf_Arange *aranges, Dwarf_Signed arcnt)
+    struct range **range, Dwarf_Arange *aranges, Dwarf_Signed arcnt)
 {
 	Dwarf_Error de;
 	Dwarf_Unsigned addr_base, lopc, hipc;
@@ -623,21 +623,21 @@ check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 				in_cu = true;
 			}
 		} else {
-			/* can't find addr in cu die, try labels */
-			ret = check_labels(dbg, die, addr, cu, aranges, arcnt);
+			/* can't find addr in range die, try labels */
+			ret = check_labels(dbg, die, addr, range, aranges, arcnt);
 			return ret;
 		}
 	}
 	
 	if (in_cu) {
-		if ((*cu = calloc(1, sizeof(struct CU))) == NULL)
+		if ((*range = calloc(1, sizeof(struct range))) == NULL)
 			err(EXIT_FAILURE, "calloc");
-		(*cu)->lopc = lopc;
-		(*cu)->hipc = hipc;
-		(*cu)->die = die;
-		(*cu)->dbg = dbg;
-		STAILQ_INIT(&(*cu)->funclist);
-		RB_INSERT(cutree, &cuhead, *cu);
+		(*range)->lopc = lopc;
+		(*range)->hipc = hipc;
+		(*range)->die = die;
+		(*range)->dbg = dbg;
+		STAILQ_INIT(&(*range)->funclist);
+		RB_INSERT(cutree, &cuhead, *range);
 		curlopc = lopc;
 		return (DW_DLV_OK);
 	} else {
@@ -656,7 +656,7 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr,
 	Dwarf_Unsigned addr, lineno, plineno;
 	Dwarf_Signed lcount;
 	Dwarf_Addr lineaddr, plineaddr;
-	struct CU *cu;
+	struct range *range;
 	struct Func *f;
 	const char *funcname;
 	char *file, *file0, *pfile;
@@ -670,10 +670,10 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr,
 	die = NULL;
 	ret = DW_DLV_OK;
 
-	cu = culookup(addr);
-	if (cu != NULL) {
-		die = cu->die;
-		dbg = cu->dbg;
+	range = culookup(addr);
+	if (range != NULL) {
+		die = range->die;
+		dbg = range->dbg;
 		goto status_ok;
 	}
 	
@@ -712,7 +712,7 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr,
 			warnx("could not find DW_TAG_compile_unit die");
 			goto next_cu;
 		}
-		ret = check_range(dbg, die, addr, &cu, aranges, arcnt);
+		ret = check_range(dbg, die, addr, &range, aranges, arcnt);
 		if (ret == DW_DLV_OK)
 			break;
 		if (ret == DW_DLV_ERROR)
@@ -771,16 +771,16 @@ status_ok:
 out:
 	f = NULL;
 	funcname = NULL;
-	if (ret == DW_DLV_OK && (func || inlines) && cu != NULL) {
-		if (cu->srcfiles == NULL)
-			if (dwarf_srcfiles(die, &cu->srcfiles, &cu->nsrcfiles,
+	if (ret == DW_DLV_OK && (func || inlines) && range != NULL) {
+		if (range->srcfiles == NULL)
+			if (dwarf_srcfiles(die, &range->srcfiles, &range->nsrcfiles,
 			    &de))
 				warnx("dwarf_srcfiles: %s", dwarf_errmsg(de));
-		if (STAILQ_EMPTY(&cu->funclist)) {
-			collect_func(dbg, cu->die, NULL, cu);
+		if (STAILQ_EMPTY(&range->funclist)) {
+			collect_func(dbg, range->die, NULL, range);
 			die = NULL;
 		}
-		f = search_func(cu, addr);
+		f = search_func(range, addr);
 		if (f != NULL)
 			funcname = f->name;
 	}
@@ -823,9 +823,9 @@ out:
 	(void) printf("%s:%ju\n", base ? basename(file) : file,
 	    (uintmax_t) lineno);
 
-	if (ret == DW_DLV_OK && inlines && cu != NULL &&
-	    cu->srcfiles != NULL && f != NULL && f->inlined_caller != NULL)
-		print_inlines(cu, f->inlined_caller, f->call_file,
+	if (ret == DW_DLV_OK && inlines && range != NULL &&
+	    range->srcfiles != NULL && f != NULL && f->inlined_caller != NULL)
+		print_inlines(range, f->inlined_caller, f->call_file,
 		    f->call_line);
 }
 
