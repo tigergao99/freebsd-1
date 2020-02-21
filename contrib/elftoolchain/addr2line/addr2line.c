@@ -560,13 +560,12 @@ check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 	Dwarf_Signed ranges_cnt;
 	Dwarf_Ranges *ranges;
 	int i, ret;
-	bool in_cu, in_label;
+	bool in_cu;
 
 	addr_base = 0;
 	ranges = NULL;
 	ranges_cnt = 0;
 	in_cu = false;
-	in_label = false;
 
 	ret = dwarf_attrval_unsigned(die, DW_AT_ranges, &ranges_off, &de);
 	if (ret == DW_DLV_OK) {
