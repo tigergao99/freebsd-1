@@ -258,17 +258,21 @@ collect_func(Dwarf_Debug dbg, Dwarf_Die die, struct Func *parent, struct range *
 		}
 
 		/*
-		 * Search for DW_AT_low_pc/DW_AT_high_pc if ranges pointer
-		 * not found. Treat labels differently.
+		 * Ranges pointer not found. Search for DW_AT_low_pc and 
+		 * DW_AT_high_pc if die is not a label. Otherwise search 
+		 * for DW_AT_low_pc since labels doesn't have hipc attr.
 		 */
-		if (tag == DW_TAG_label && 
-		    dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) == DW_DLV_OK)
-			goto get_func_name;
-		if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) ||
-		    dwarf_attrval_unsigned(die, DW_AT_high_pc, &hipc, &de))
-			goto cont_search;
-		if (handle_high_pc(die, lopc, &hipc) != DW_DLV_OK)
-			goto cont_search;
+		if (tag != DW_TAG_label) {
+			if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) ||
+		        dwarf_attrval_unsigned(die, DW_AT_high_pc, &hipc, &de))
+				goto cont_search;
+			if (handle_high_pc(die, lopc, &hipc) != DW_DLV_OK)
+				goto cont_search;
+		} else {
+			if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) !=
+			    DW_DLV_OK)
+				goto cont_search;
+		}
 
 	get_func_name:
 		/*
@@ -418,6 +422,10 @@ culookup(Dwarf_Unsigned addr)
 	return (NULL);
 }
 
+/* When DW_AT_ranges, DW_AT_low_pc/DW_AT_high_pc are all absent,
+ * we check the children of cu die for labels. If the address falls
+ * into one of the labels ranges(aranges), return the label die.
+ */
 static int
 check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
     struct range **range) {
@@ -557,7 +565,8 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 }
 
 /* Checks whether addr falls into range(s) of current CU.
- * If so, saves current CU to lookup tree */
+ * If so, saves current CU to lookup tree.
+ */
 static int
 check_range(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
     struct range **range)
