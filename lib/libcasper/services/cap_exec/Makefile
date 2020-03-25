@@ -19,4 +19,8 @@ LIBADD=	nv
 
 CFLAGS+=-I${.CURDIR}
 
+MAN+=	cap_exec.3
+
+MLINKS+=cap_exec.3 libcap_exec.3
+
 .include <bsd.lib.mk>
