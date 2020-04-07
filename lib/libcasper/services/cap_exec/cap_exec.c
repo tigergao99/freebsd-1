@@ -1,7 +1,7 @@
 /*-
  * SPDX-License-Identifier: BSD-2-Clause-FreeBSD
  *
- * Copyright (c) 2018 Mariusz Zaborski <oshogbo@FreeBSD.org>
+ * Copyright (c) 2020
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,72 +26,101 @@
  * SUCH DAMAGE.
  */
 
-__FBSDID("$FreeBSD$");
-
+#include <sys/capsicum.h>
 #include <sys/dnv.h>
+#include <sys/errno.h>
 #include <sys/nv.h>
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <libcasper.h>
 #include <libcasper_service.h>
 
+#include "cap_exec.h"
+
 int
-execute_command(const char *command) {
-    FILE *output;
-
-    output = popen(command);
-    if (pclose(output) != 0) {
-        fprintf(stderr, "pclose\n");
-        return (-1)
-    }
-    return (0);
-}
-
-static int
-exec_limits(const nvlist_t *oldlimits, const nvlist_t *newlimits)
+cap_exec_init(cap_channel_t *chan, int count, const char **arr)
 {
-	/*const char *dumpdir, *name;
-	void *cookie;
-	int nvtype;
-	bool hasscript;*/
+	nvlist_t *allowed_programs;
+	int i;
 
-	/* Only allow limits to be set once. */
-	/*if (oldlimits != NULL)
-		return (ENOTCAPABLE);
-
-	cookie = NULL;
-	hasscript = false;
-	while ((name = nvlist_next(newlimits, &nvtype, &cookie)) != NULL) {
-		if (nvtype == NV_TYPE_STRING) {
-			if (strcmp(name, "handler_script") == 0)
-				hasscript = true;
-			else if (strcmp(name, "dumpdir") != 0)
-				return (EINVAL);
-		} else
-			return (EINVAL);
-	}*/
+	allowed_programs = nvlist_create(0);
+	for(i = 0; i < count; i++) {
+		nvlist_add_null(allowed_programs, arr[i]);
+	}
+	if (cap_limit_set(chan, allowed_programs) < 0) {
+		return (-1);
+	}
 	return (0);
 }
 
-void
-cap_command(const char *cmd, const nvlist_t *limits, nvlist_t *nvlin,
-    nvlist_t *nvlout) {
+int
+cap_exec(cap_channel_t *chan, const char *command) 
+{
+	nvlist_t *nvl;
+	int error, fd;
+
+	nvl = nvlist_create(0);
+	nvlist_add_string(nvl, "cmd", "exec");
+	nvlist_add_string(nvl, "command", command);
+	nvl = cap_xfer_nvlist(chan, nvl);
+	if (nvl == NULL) {
+		return (-1);
+	}
+	error = (int)dnvlist_get_number(nvl, "error", 0);
+	fd = dnvlist_take_descriptor(nvl, "filedesc", -1);
+	nvlist_destroy(nvl);
+	if (error != 0) {
+		if (fd != -1) {
+			close(fd);
+			fd = -1;
+		}
+		errno = error;
+	}
+	return (fd);
+}
+
+static int
+exec_limits(const nvlist_t *oldlimits, const nvlist_t *newlimits) 
+{
+	
+	/* only allow limit to be set once */
+	if (oldlimits != NULL)
+		return (ENOTCAPABLE);
+	(void) newlimits;
+	return (0);
+}
+
+static int
+exec_command(const char *cmd, const nvlist_t *limits, nvlist_t *nvlin,
+    nvlist_t *nvlout) 
+{
     const char *command;
+	char *prog;
+	int fd;
+	bool allowed;
 
     if (strcmp(cmd, "exec") != 0)
-        return (NO_RECOVERY);
+        return (EINVAL);
     if (limits == NULL)
 		return (ENOTCAPABLE);
+	
     command = nvlist_get_string(nvlin, "command");
-    if (nvlist_get_number(nvl, "error") != 0) {
-		h_errno = (int)nvlist_get_number(nvl, "error");
-		nvlist_destroy(nvl);
-		return (NULL);
-	}
-    if (execute_command(command))
-        return (-1);
+
+	/* parse executable */
+	char buf[strlen(command) + 1];
+	strcpy(buf, command);
+	prog = strtok(buf, " ");
+
+	/* Check if program in allowed set */
+	allowed = nvlist_exists_null(limits, prog);
+	if (!allowed)
+		return (ENOTCAPABLE);
+    fd = fileno(popen(command, "r+"));
+	nvlist_move_descriptor(nvlout, "filedesc", fd);
     return (0);
 }
 
