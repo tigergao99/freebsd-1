@@ -30,6 +30,7 @@ SRCS=	elf.c							\
 	elf_update.c						\
 	elf_version.c						\
 	gelf_cap.c						\
+	gelf_chdr.c						\
 	gelf_checksum.c						\
 	gelf_dyn.c						\
 	gelf_ehdr.c						\
@@ -49,6 +50,7 @@ SRCS=	elf.c							\
 	libelf_allocate.c					\
 	libelf_ar.c						\
 	libelf_ar_util.c					\
+	libelf_chdr.c						\
 	libelf_checksum.c					\
 	libelf_data.c						\
 	libelf_ehdr.c						\
