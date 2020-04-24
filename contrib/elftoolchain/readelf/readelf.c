@@ -216,6 +216,7 @@ static struct option longopts[] = {
 	{"version-info", no_argument, 0, 'V'},
 	{"version", no_argument, 0, 'v'},
 	{"wide", no_argument, 0, 'W'},
+	{"decompress", no_argument, 0, 'z'},
 	{NULL, 0, NULL, 0}
 };
 
@@ -2572,6 +2573,7 @@ static void
 dump_shdr(struct readelf *re)
 {
 	struct section	*s;
+	GElf_Chdr chdr;
 	int		 i;
 
 #define	S_HDR	"[Nr] Name", "Type", "Addr", "Off", "Size", "ES",	\
@@ -2591,6 +2593,10 @@ dump_shdr(struct readelf *re)
 		(uintmax_t)s->entsize, s->link, s->info,		\
 		(uintmax_t)s->align, section_flags(re, s)
 #define	ST_CTL	i, s->name, section_type(re->ehdr.e_machine, s->type),  \
+		(uintmax_t)s->addr, (uintmax_t)s->off, s->link,		\
+		(uintmax_t)s->sz, (uintmax_t)s->entsize, s->info,	\
+		(uintmax_t)s->align, section_flags(re, s)
+#define	SZ_CT	i, s->name, section_type(re->ehdr.e_machine, s->type),  \
 		(uintmax_t)s->addr, (uintmax_t)s->off, s->link,		\
 		(uintmax_t)s->sz, (uintmax_t)s->entsize, s->info,	\
 		(uintmax_t)s->align, section_flags(re, s)
@@ -2653,6 +2659,21 @@ dump_shdr(struct readelf *re)
 				printf("  [%2d] %-17.17s %-15.15s  %16.16jx"
 				    "  %8.8jx\n       %16.16jx  %16.16jx "
 				    "%3s      %2u   %3u     %ju\n", S_CT);
+		}
+		if (re->options & RE_Z) {
+			if (gelf_getchdr(s, &chdr) != NULL) {
+				if (chdr.ch_type == ELFCOMPRESS_ZLIB)
+					printf("     [ELF ZLIB (1) %8.8jx  %lu]\n", 
+					    (unsigned int) chdr.ch_size, 
+						(unsigned long) chdr.ch_addralign);
+				else
+					printf("     [Unknown: %x %8.8jx  %lu]\n", 
+					    chdr.ch_type, 
+					    chdr.ch_size, 
+						(unsigned long) chdr.ch_addralign);
+			} else {
+				printf("     [Bad compressed section header.]\n")
+			}
 		}
 	}
 	if ((re->options & RE_T) == 0)
@@ -7865,6 +7886,9 @@ main(int argc, char **argv)
 				    DUMP_BY_NAME);
 			break;
 		case 'z':
+			/* section content decompression is not implemented yet
+			 * only displays compressed header for sections for now
+			 */
 			re->options |= RE_Z;
 			break;
 		case OPTION_DEBUG_DUMP:
