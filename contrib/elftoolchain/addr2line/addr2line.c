@@ -264,7 +264,7 @@ collect_func(Dwarf_Debug dbg, Dwarf_Die die, struct Func *parent, struct range *
 		 */
 		if (tag != DW_TAG_label) {
 			if (dwarf_attrval_unsigned(die, DW_AT_low_pc, &lopc, &de) ||
-		        dwarf_attrval_unsigned(die, DW_AT_high_pc, &hipc, &de))
+		            dwarf_attrval_unsigned(die, DW_AT_high_pc, &hipc, &de))
 				goto cont_search;
 			if (handle_high_pc(die, lopc, &hipc) != DW_DLV_OK)
 				goto cont_search;
@@ -424,7 +424,7 @@ culookup(Dwarf_Unsigned addr)
 
 /* When DW_AT_ranges, DW_AT_low_pc/DW_AT_high_pc are all absent,
  * we check the children of cu die for labels. If the address falls
- * into one of the labels ranges(aranges), return the label die.
+ * into one of the labels ranges(aranges), return the label DIE.
  */
 static int
 check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
@@ -444,7 +444,7 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 	labels = NULL;
 	i = label_cnt = 0;
 
-	/* find aranges */
+	/* Find aranges */
 	ret = dwarf_get_aranges(dbg, &aranges, &arcnt, &de);
 	if (ret != DW_DLV_OK && ret != DW_DLV_NO_ENTRY) {
 		warnx("dwarf_get_aranges failed: %s", dwarf_errmsg(de));
@@ -482,7 +482,7 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 		return (DW_DLV_NO_ENTRY);
 
 	/* Allocate space for labels */
-	if ((labels = (struct range **)calloc(label_cnt, sizeof(struct range *))) == NULL)
+	if ((labels = calloc(label_cnt, sizeof(struct range *))) == NULL)
 		err(EXIT_FAILURE, "calloc");
 	
 	/* Add labels to list */
@@ -497,9 +497,8 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 		}
 		if (tag == DW_TAG_label) {
 			if (dwarf_attrval_unsigned(prev_die, DW_AT_low_pc, &lopc, &de) ==
-		        DW_DLV_OK) {
+		            DW_DLV_OK) {
 				if (curlopc == lopc) {
-					/* free memory */
 					for (i = 0; i < label_cnt - 1; i++) {
 						if (labels[i] != *range)
 							free(labels[i]);
@@ -524,7 +523,7 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 		prev_die = ret_die;
 	}
 
-	/* set hipc using aranges */
+	/* Set hipc for each label using aranges */
 	for (i = 0; i < label_cnt; i++) {
 		for (j = 0; j < arcnt; j++) {
 			if (dwarf_get_arange_info(aranges[j], &start, &length,
@@ -540,23 +539,22 @@ check_labels(Dwarf_Debug dbg, Dwarf_Die die, Dwarf_Unsigned addr,
 		}
 	}
 	
-	/* check in range */
+	/* If addr in label's range, we have found the range for this label. */
 	for (i = 0; i < label_cnt; i++) {
 		if (addr >= labels[i]->lopc && addr < labels[i]->hipc) {
 			*range = labels[i];
-			/* Add to cache */
 			RB_INSERT(cutree, &cuhead, (*range));
 			curlopc = (*range)->lopc;
 			break;
 		}
 	}
-	/* free memory */
+
 	for (i = 0; i < label_cnt - 1; i++) {
 		if (labels[i] != *range)
 			free(labels[i]);
 	}
 	free(labels);
-	/* return status */
+
 	if (*range != NULL) {
 		return (DW_DLV_OK);
 	} else {
