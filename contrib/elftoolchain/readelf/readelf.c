@@ -6922,6 +6922,33 @@ get_symbol_value(struct readelf *re, int symtab, int i)
 	return (sym.st_value);
 }
 
+/* 
+ * Decompress a section in place using ZLIB.
+ */
+static void
+decompress_section(struct section *s, unsigned char **buf, uint64_t *sz) {
+	int ec;
+	GElf_Shdr sh;
+	Elf64_Xword uncompressed_size;
+
+	ec = s->scn->s_elf->e_class;
+	if (gelf_getshdr(s->scn, &sh) == NULL)
+		errx(EXIT_FAILURE, "gelf_getshdr() failed: %s",
+		    elf_errmsg(-1));
+
+	if (sh.sh_flags & SHF_COMPRESSED) {
+		GElf_Chdr chdr;
+		if (gelf_getchdr(s->scn, &chdr) == NULL)
+		    errx(EXIT_FAILURE, "gelf_getchdr() failed: %s",
+		        elf_errmsg(-1));
+		if (chdr.ch_type != ELFCOMPRESS_ZLIB)
+		    errx(EXIT_FAILURE, "Unsupported compress type",
+		        elf_errmsg(-1));
+		uncompressed_size = chdr.ch_size;
+		
+	}
+}
+
 static void
 hex_dump(struct readelf *re)
 {
@@ -6931,6 +6958,7 @@ hex_dump(struct readelf *re)
 	size_t sz, nbytes;
 	uint64_t addr;
 	int elferr, i, j;
+
 
 	for (i = 1; (size_t) i < re->shnum; i++) {
 		s = &re->sl[i];
@@ -6954,6 +6982,9 @@ hex_dump(struct readelf *re)
 		buf = d->d_buf;
 		sz = d->d_size;
 		addr = s->addr;
+		if (re->options & RE_Z) {
+			decompress_section(s, &buf, &sz);
+		}
 		printf("\nHex dump of section '%s':\n", s->name);
 		while (sz > 0) {
 			printf("  0x%8.8jx ", (uintmax_t)addr);
@@ -7011,6 +7042,9 @@ str_dump(struct readelf *re)
 		buf_end = (unsigned char *) d->d_buf + d->d_size;
 		start = (unsigned char *) d->d_buf;
 		found = 0;
+		if (re->options & RE_Z) {
+			decompress_section(s, &start, &d->d_size);
+		}
 		printf("\nString dump of section '%s':\n", s->name);
 		for (;;) {
 			while (start < buf_end && !isprint(*start))
