@@ -1,0 +1,17 @@
+gelf_shdr.po: gelf_shdr.c /usr/include/assert.h /usr/include/sys/cdefs.h \
+  gelf.h libelf.h /usr/include/sys/types.h /usr/include/machine/endian.h \
+  /usr/include/x86/endian.h /usr/include/sys/_types.h \
+  /usr/include/machine/_types.h /usr/include/x86/_types.h \
+  /usr/include/machine/_limits.h /usr/include/x86/_limits.h \
+  /usr/include/sys/_pthreadtypes.h /usr/include/sys/_stdint.h \
+  /usr/include/sys/select.h /usr/include/sys/_sigset.h \
+  /usr/include/sys/_timeval.h /usr/include/sys/timespec.h \
+  /usr/include/sys/_timespec.h /usr/include/sys/elf32.h \
+  /usr/include/sys/elf_common.h /usr/include/sys/elf64.h \
+  /usr/include/limits.h /usr/include/sys/limits.h \
+  /usr/include/sys/syslimits.h /usr/include/stdint.h \
+  /usr/include/machine/_stdint.h /usr/include/x86/_stdint.h _libelf.h \
+  /usr/include/sys/queue.h /usr/include/sys/tree.h _libelf_config.h \
+  /usr/home/tig/freebsd-1/contrib/elftoolchain/libelf/../common/_elftc.h \
+  /usr/include/stdlib.h /usr/include/sys/_null.h \
+  /usr/include/osreldate.h /usr/include/sys/endian.h
