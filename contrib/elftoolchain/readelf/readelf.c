@@ -6925,82 +6925,31 @@ get_symbol_value(struct readelf *re, int symtab, int i)
 	return (sym.st_value);
 }
 
-/*
- * Decompress a data section if needed (using ZLIB).
- * Returns true if sucessful, false otherwise.
+/* 
+ * Decompress a section in place using ZLIB.
  */
-static bool decompress_section(struct section *s, 
-    unsigned char *compressed_data_buffer, uint64_t compressed_size, 
-    unsigned char **ret_buf, uint64_t *ret_sz)
-{
+static void
+decompress_section(struct section *s, unsigned char **buf, uint64_t *sz) {
+	int ec;
 	GElf_Shdr sh;
+	Elf64_Xword uncompressed_size;
 
+	ec = s->scn->s_elf->e_class;
 	if (gelf_getshdr(s->scn, &sh) == NULL)
-		errx(EXIT_FAILURE, "gelf_getshdr() failed: %s", elf_errmsg(-1));
+		errx(EXIT_FAILURE, "gelf_getshdr() failed: %s",
+		    elf_errmsg(-1));
 
 	if (sh.sh_flags & SHF_COMPRESSED) {
-		int ret;
 		GElf_Chdr chdr;
-		Elf64_Xword inflated_size;
-		unsigned char *uncompressed_data_buffer = NULL;
-		Elf64_Xword uncompressed_size;
-		z_stream strm;
-
 		if (gelf_getchdr(s->scn, &chdr) == NULL)
-			errx(EXIT_FAILURE, "gelf_getchdr() failed: %s", elf_errmsg(-1));
-		if (chdr.ch_type != ELFCOMPRESS_ZLIB) {
-			warnx("unknown compression type: %d", chdr.ch_type);
-			return (false);
-		}
-
-		inflated_size = 0;
+		    errx(EXIT_FAILURE, "gelf_getchdr() failed: %s",
+		        elf_errmsg(-1));
+		if (chdr.ch_type != ELFCOMPRESS_ZLIB)
+		    errx(EXIT_FAILURE, "Unsupported compress type",
+		        elf_errmsg(-1));
 		uncompressed_size = chdr.ch_size;
-		uncompressed_data_buffer = malloc(uncompressed_size);
-		compressed_data_buffer += sizeof(chdr);
-		compressed_size -= sizeof(chdr);
-
-		strm.zalloc = Z_NULL;
-		strm.zfree = Z_NULL;
-		strm.opaque = Z_NULL;
-		strm.avail_in = compressed_size;
-		strm.avail_out = uncompressed_size;
-		ret = inflateInit(&strm);
-
-		if (ret != Z_OK)
-			goto fail;
-		/*
-		 * The section can contain several compressed buffers,
-		 * so decompress in a loop until all data is inflated.
-		 */
-		while (inflated_size < compressed_size) {
-			strm.next_in = compressed_data_buffer + inflated_size;
-			strm.next_out = uncompressed_data_buffer + inflated_size;
-			ret = inflate(&strm, Z_FINISH);
-			if (ret != Z_STREAM_END)
-				goto fail;
-			inflated_size = uncompressed_size - strm.avail_out;
-			ret = inflateReset(&strm);
-			if (ret != Z_OK)
-				goto fail;
-		}
-		if (strm.avail_out != 0)
-			warnx("Warning: wrong info in compression header.");
-		ret = inflateEnd(&strm);
-		if (ret != Z_OK)
-			goto fail;
-		*ret_buf = uncompressed_data_buffer;
-		*ret_sz = uncompressed_size;
-		return (true);
-fail:
-		inflateEnd(&strm);
-		if (strm.msg)
-			warnx("%s", strm.msg);
-		else
-			warnx("ZLIB error: %d", ret);
-		free(uncompressed_data_buffer);
-		return (false);
+		
 	}
-	return (false);
 }
 
 static void
@@ -7012,6 +6961,7 @@ hex_dump(struct readelf *re)
 	size_t sz, nbytes;
 	uint64_t addr;
 	int elferr, i, j;
+
 
 	for (i = 1; (size_t) i < re->shnum; i++) {
 		new_buf = NULL;
@@ -7037,9 +6987,7 @@ hex_dump(struct readelf *re)
 		sz = d->d_size;
 		addr = s->addr;
 		if (re->options & RE_Z) {
-			if (decompress_section(s, d->d_buf, d->d_size,
-			    &new_buf, &sz))
-				buf = new_buf;
+			decompress_section(s, &buf, &sz);
 		}
 		printf("\nHex dump of section '%s':\n", s->name);
 		while (sz > 0) {
@@ -7099,14 +7047,9 @@ str_dump(struct readelf *re)
 			continue;
 		}
 		found = 0;
-		start = d->d_buf;
-		sz = d->d_size;
 		if (re->options & RE_Z) {
-			if (decompress_section(s, d->d_buf, d->d_size,
-			    &new_buf, &sz))
-				start = new_buf;
+			decompress_section(s, &start, &d->d_size);
 		}
-		buf_end = start + sz;
 		printf("\nString dump of section '%s':\n", s->name);
 		for (;;) {
 			while (start < buf_end && !isprint(*start))
