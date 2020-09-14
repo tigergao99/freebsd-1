@@ -1,0 +1,1 @@
+readelf.full: /usr/lib/libc.a ../libdwarf ../libelf ../libelftc ../libelf
