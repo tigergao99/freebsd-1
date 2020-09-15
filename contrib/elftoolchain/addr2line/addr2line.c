@@ -65,8 +65,8 @@ struct range {
 	char **srcfiles;
 	Dwarf_Signed nsrcfiles;
 	STAILQ_HEAD(, Func) funclist;
-	Dwarf_Debug dbg;
 	Dwarf_Die die;
+	Dwarf_Debug dbg;
 };
 
 static struct option longopts[] = {
