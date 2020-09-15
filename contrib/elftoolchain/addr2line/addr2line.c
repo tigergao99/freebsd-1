@@ -59,14 +59,14 @@ struct Func {
 
 struct range {
 	RB_ENTRY(range) entry;
-	Dwarf_Debug dbg;
-	Dwarf_Die die;
 	Dwarf_Off off;
 	Dwarf_Unsigned lopc;
 	Dwarf_Unsigned hipc;
 	char **srcfiles;
 	Dwarf_Signed nsrcfiles;
 	STAILQ_HEAD(, Func) funclist;
+	Dwarf_Debug dbg;
+	Dwarf_Die die;
 };
 
 static struct option longopts[] = {
