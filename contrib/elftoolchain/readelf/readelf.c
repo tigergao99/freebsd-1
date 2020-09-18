@@ -7865,9 +7865,6 @@ main(int argc, char **argv)
 				    DUMP_BY_NAME);
 			break;
 		case 'z':
-			/* section content decompression is not implemented yet
-			 * only displays compressed header for sections for now
-			 */
 			re->options |= RE_Z;
 			break;
 		case OPTION_DEBUG_DUMP:
