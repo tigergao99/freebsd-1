@@ -2654,6 +2654,7 @@ dump_shdr(struct readelf *re)
 				printf("  [%2d] %-17.17s %-15.15s  %16.16jx"
 				    "  %8.8jx\n       %16.16jx  %16.16jx "
 				    "%3s      %2u   %3u     %ju\n", S_CT);
+		}
 	}
 	if ((re->options & RE_T) == 0)
 		printf("Key to Flags:\n  W (write), A (alloc),"
