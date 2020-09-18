@@ -2595,10 +2595,6 @@ dump_shdr(struct readelf *re)
 		(uintmax_t)s->addr, (uintmax_t)s->off, s->link,		\
 		(uintmax_t)s->sz, (uintmax_t)s->entsize, s->info,	\
 		(uintmax_t)s->align, section_flags(re, s)
-#define	SZ_CT	i, s->name, section_type(re->ehdr.e_machine, s->type),  \
-		(uintmax_t)s->addr, (uintmax_t)s->off, s->link,		\
-		(uintmax_t)s->sz, (uintmax_t)s->entsize, s->info,	\
-		(uintmax_t)s->align, section_flags(re, s)
 
 	if (re->shnum == 0) {
 		printf("\nThere are no sections in this file.\n");
