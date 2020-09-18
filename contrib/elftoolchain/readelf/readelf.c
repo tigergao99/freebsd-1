@@ -2573,7 +2573,6 @@ static void
 dump_shdr(struct readelf *re)
 {
 	struct section	*s;
-	GElf_Chdr chdr;
 	int		 i;
 
 #define	S_HDR	"[Nr] Name", "Type", "Addr", "Off", "Size", "ES",	\
@@ -2659,22 +2658,6 @@ dump_shdr(struct readelf *re)
 				printf("  [%2d] %-17.17s %-15.15s  %16.16jx"
 				    "  %8.8jx\n       %16.16jx  %16.16jx "
 				    "%3s      %2u   %3u     %ju\n", S_CT);
-		}
-		if (re->options & RE_Z) {
-			if (gelf_getchdr(s, &chdr) != NULL) {
-				if (chdr.ch_type == ELFCOMPRESS_ZLIB)
-					printf("     [ELF ZLIB (1) %8.8jx  %lu]\n", 
-					    (unsigned int) chdr.ch_size, 
-						(unsigned long) chdr.ch_addralign);
-				else
-					printf("     [Unknown: %x %8.8jx  %lu]\n", 
-					    chdr.ch_type, 
-					    chdr.ch_size, 
-						(unsigned long) chdr.ch_addralign);
-			} else {
-				printf("     [Bad compressed section header.]\n")
-			}
-		}
 	}
 	if ((re->options & RE_T) == 0)
 		printf("Key to Flags:\n  W (write), A (alloc),"
@@ -6926,30 +6909,81 @@ get_symbol_value(struct readelf *re, int symtab, int i)
 }
 
 /* 
- * Decompress a section in place using ZLIB.
+ * Decompress a data section if needed (using ZLIB).
  */
-static void
-decompress_section(struct section *s, unsigned char **buf, uint64_t *sz) {
-	int ec;
+static int
+decompress_section(struct section *s, unsigned char **buffer, uint64_t *sz) {
 	GElf_Shdr sh;
-	Elf64_Xword uncompressed_size;
 
-	ec = s->scn->s_elf->e_class;
 	if (gelf_getshdr(s->scn, &sh) == NULL)
 		errx(EXIT_FAILURE, "gelf_getshdr() failed: %s",
 		    elf_errmsg(-1));
 
 	if (sh.sh_flags & SHF_COMPRESSED) {
+		int ret;
 		GElf_Chdr chdr;
+		Elf64_Xword compressed_size;
+		unsigned char *compressed_data_buffer = NULL;
+		Elf64_Xword inflated_size;
+		unsigned char *uncompressed_data_buffer = NULL;
+		Elf64_Xword uncompressed_size;
+		z_stream strm;
+
 		if (gelf_getchdr(s->scn, &chdr) == NULL)
 		    errx(EXIT_FAILURE, "gelf_getchdr() failed: %s",
 		        elf_errmsg(-1));
 		if (chdr.ch_type != ELFCOMPRESS_ZLIB)
-		    errx(EXIT_FAILURE, "Unsupported compress type",
-		        elf_errmsg(-1));
-		uncompressed_size = chdr.ch_size;
+		    goto fail;
 		
+		compressed_data_buffer = *buffer;
+		compressed_size = *sz;
+		inflated_size = 0;
+		uncompressed_size = chdr.ch_size;
+		uncompressed_data_buffer = malloc(uncompressed_size);
+		compressed_data_buffer += sizeof(chdr);
+		compressed_size -= sizeof(chdr);
+
+		strm.zalloc = Z_NULL;
+		strm.zfree = Z_NULL;
+		strm.opaque = Z_NULL;
+		strm.avail_in = compressed_size;
+		strm.avail_out = uncompressed_size;
+		ret = inflateInit(&strm);
+
+		if (ret != Z_OK)
+			goto fail;
+		/*
+		 * The section can contain several compressed buffers, 
+		 * so decompress in a loop until all data is inflated.
+		 */
+		while (inflated_size < compressed_size) {
+			strm.next_in = compressed_data_buffer + inflated_size;
+			strm.next_out = uncompressed_data_buffer + inflated_size;
+			ret = inflate(&strm, Z_FINISH);
+			if (ret != Z_STREAM_END) {
+				goto fail;
+			}
+			inflated_size = uncompressed_size - strm.avail_out;
+			ret = inflateReset(&strm);
+			if (ret != Z_OK)
+				goto fail;
+		}
+		if (strm.avail_out != 0) {
+			goto fail;
+		}
+		ret = inflateEnd(&strm);
+		if (ret != Z_OK)
+			goto fail;
+		free(*buffer);
+		*buffer = uncompressed_data_buffer;
+		*sz = uncompressed_size;
+		return (1);
+		fail:
+			free(uncompressed_data_buffer);
+			warnx("decompress_section failed: %s", elf_errmsg(-1));
+			return (0);
 	}
+	return (1);
 }
 
 static void
@@ -6983,12 +7017,12 @@ hex_dump(struct readelf *re)
 			    s->name);
 			continue;
 		}
-		buf = d->d_buf;
-		sz = d->d_size;
 		addr = s->addr;
 		if (re->options & RE_Z) {
-			decompress_section(s, &buf, &sz);
+			decompress_section(s, (unsigned char **) &d->d_buf, &d->d_size);
 		}
+		buf = d->d_buf;
+		sz = d->d_size;
 		printf("\nHex dump of section '%s':\n", s->name);
 		while (sz > 0) {
 			printf("  0x%8.8jx ", (uintmax_t)addr);
@@ -7048,8 +7082,10 @@ str_dump(struct readelf *re)
 		}
 		found = 0;
 		if (re->options & RE_Z) {
-			decompress_section(s, &start, &d->d_size);
+			decompress_section(s, (unsigned char **) &d->d_buf, &d->d_size);
 		}
+		start = (unsigned char *) d->d_buf;
+		buf_end = start + d->d_size;
 		printf("\nString dump of section '%s':\n", s->name);
 		for (;;) {
 			while (start < buf_end && !isprint(*start))
