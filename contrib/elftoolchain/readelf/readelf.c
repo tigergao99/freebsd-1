@@ -216,7 +216,6 @@ static struct option longopts[] = {
 	{"version-info", no_argument, 0, 'V'},
 	{"version", no_argument, 0, 'v'},
 	{"wide", no_argument, 0, 'W'},
-	{"decompress", no_argument, 0, 'z'},
 	{NULL, 0, NULL, 0}
 };
 
@@ -6913,8 +6912,7 @@ decompress_section(struct section *s, unsigned char **buffer, uint64_t *sz) {
 	GElf_Shdr sh;
 
 	if (gelf_getshdr(s->scn, &sh) == NULL)
-		errx(EXIT_FAILURE, "gelf_getshdr() failed: %s",
-		    elf_errmsg(-1));
+		errx(EXIT_FAILURE, "gelf_getshdr() failed: %s", elf_errmsg(-1));
 
 	if (sh.sh_flags & SHF_COMPRESSED) {
 		int ret;
@@ -6928,7 +6926,7 @@ decompress_section(struct section *s, unsigned char **buffer, uint64_t *sz) {
 
 		if (gelf_getchdr(s->scn, &chdr) == NULL)
 		    errx(EXIT_FAILURE, "gelf_getchdr() failed: %s",
-		        elf_errmsg(-1));
+		            elf_errmsg(-1));
 		if (chdr.ch_type != ELFCOMPRESS_ZLIB)
 		    goto fail;
 		
@@ -6950,7 +6948,7 @@ decompress_section(struct section *s, unsigned char **buffer, uint64_t *sz) {
 		if (ret != Z_OK)
 			goto fail;
 		/*
-		 * The section can contain several compressed buffers, 
+		 * The section can contain several compressed buffers,
 		 * so decompress in a loop until all data is inflated.
 		 */
 		while (inflated_size < compressed_size) {
@@ -6992,7 +6990,6 @@ hex_dump(struct readelf *re)
 	size_t sz, nbytes;
 	uint64_t addr;
 	int elferr, i, j;
-
 
 	for (i = 1; (size_t) i < re->shnum; i++) {
 		new_buf = NULL;
