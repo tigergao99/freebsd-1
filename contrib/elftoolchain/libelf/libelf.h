@@ -153,12 +153,9 @@ enum Elf_Error {
 	ELF_E_CLASS,	/* Mismatched ELF class */
 	ELF_E_DATA,	/* Invalid data descriptor */
 	ELF_E_HEADER,	/* Missing or malformed ELF header */
-	ELF_E_INVALID_SECTION_FLAGS, /* Invalid ELF section header flags */
-	ELF_E_INVALID_SECTION_TYPE, /* Invalid ELF section header type */
 	ELF_E_IO,	/* I/O error */
 	ELF_E_LAYOUT,	/* Layout constraint violation */
 	ELF_E_MODE,	/* Wrong mode for ELF descriptor */
-	ELF_E_NOT_COMPRESSED, /* Section is not compressed */
 	ELF_E_RANGE,	/* Value out of range */
 	ELF_E_RESOURCE,	/* Resource exhaustion */
 	ELF_E_SECTION,	/* Invalid section descriptor */
