@@ -10,12 +10,11 @@ READELFDIR=	${ELFTCDIR}/readelf
 PROG=	readelf
 SRCS=	readelf.c
 
-LIBADD=	dwarf elftc elf
+LIBADD=	dwarf elftc elf z
 
 .if ${MK_CASPER} != "no"
 LIBADD+=	casper
 LIBADD+=	cap_fileargs
-LIBADD+=	z
 CFLAGS+=	-DWITH_CASPER
 .endif
 
