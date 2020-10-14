@@ -100,30 +100,30 @@ static int
 exec_command(const char *cmd, const nvlist_t *limits, nvlist_t *nvlin,
     nvlist_t *nvlout) 
 {
-    const char *command;
+	const char *command;
 	char *prog;
 	int fd;
 	bool allowed;
 
-    if (strcmp(cmd, "exec") != 0)
-        return (EINVAL);
-    if (limits == NULL)
+	if (strncmp(cmd, "exec", 4) != 0)
+    	return (EINVAL);
+	if (limits == NULL)
 		return (ENOTCAPABLE);
 	
-    command = nvlist_get_string(nvlin, "command");
+	command = nvlist_get_string(nvlin, "command");
 
 	/* parse executable */
 	char buf[strlen(command) + 1];
-	strcpy(buf, command);
+	strncpy(buf, command, sizeof(buf));
 	prog = strtok(buf, " ");
 
 	/* Check if program in allowed set */
 	allowed = nvlist_exists_null(limits, prog);
 	if (!allowed)
 		return (ENOTCAPABLE);
-    fd = fileno(popen(command, "r+"));
+	fd = fileno(popen(command, "r+"));
 	nvlist_move_descriptor(nvlout, "filedesc", fd);
-    return (0);
+	return (0);
 }
 
 CREATE_SERVICE("system.exec", exec_limits, exec_command, 0);
