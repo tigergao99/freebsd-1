@@ -106,7 +106,7 @@ exec_command(const char *cmd, const nvlist_t *limits, nvlist_t *nvlin,
 	bool allowed;
 
 	if (strncmp(cmd, "exec", 4) != 0)
-    	return (EINVAL);
+		return (EINVAL);
 	if (limits == NULL)
 		return (ENOTCAPABLE);
 	
