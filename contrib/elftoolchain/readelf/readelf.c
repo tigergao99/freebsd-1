@@ -6928,7 +6928,7 @@ decompress_section(struct section *s, unsigned char **buffer, uint64_t *sz) {
 		    errx(EXIT_FAILURE, "gelf_getchdr() failed: %s",
 		            elf_errmsg(-1));
 		if (chdr.ch_type != ELFCOMPRESS_ZLIB)
-		    goto fail;
+		    warnx("unknown compression type: %d", chdr.ch_type);
 		
 		compressed_data_buffer = *buffer;
 		compressed_size = *sz;
@@ -6963,9 +6963,8 @@ decompress_section(struct section *s, unsigned char **buffer, uint64_t *sz) {
 			if (ret != Z_OK)
 				goto fail;
 		}
-		if (strm.avail_out != 0) {
-			goto fail;
-		}
+		if (strm.avail_out != 0) 
+			warnx("Warning: wrong info in compression header.");
 		ret = inflateEnd(&strm);
 		if (ret != Z_OK)
 			goto fail;
@@ -6974,8 +6973,11 @@ decompress_section(struct section *s, unsigned char **buffer, uint64_t *sz) {
 		*sz = uncompressed_size;
 		return (1);
 		fail:
+			if (strm.msg)
+				warnx("%s", strm.msg);
+			else
+				warnx("ZLIB error: %d", ret);
 			free(uncompressed_data_buffer);
-			warnx("decompress_section failed: %s", elf_errmsg(-1));
 			return (0);
 	}
 	return (1);
