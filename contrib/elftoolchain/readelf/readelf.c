@@ -6905,10 +6905,12 @@ get_symbol_value(struct readelf *re, int symtab, int i)
 }
 
 /* 
- * Decompress a data section if needed (using ZLIB).
+ * Decompress a data section if needed (using ZLIB). 
+ * Returns 0 if sucessful, 1 otherwise. 
  */
 static int
-decompress_section(struct section *s, unsigned char **buffer, uint64_t *sz) {
+decompress_section(struct section *s, unsigned char *compressed_data_buffer,
+uint64_t compressed_size, unsigned char **ret_buf, uint64_t *ret_sz) {
 	GElf_Shdr sh;
 
 	if (gelf_getshdr(s->scn, &sh) == NULL)
@@ -6917,8 +6919,6 @@ decompress_section(struct section *s, unsigned char **buffer, uint64_t *sz) {
 	if (sh.sh_flags & SHF_COMPRESSED) {
 		int ret;
 		GElf_Chdr chdr;
-		Elf64_Xword compressed_size;
-		unsigned char *compressed_data_buffer = NULL;
 		Elf64_Xword inflated_size;
 		unsigned char *uncompressed_data_buffer = NULL;
 		Elf64_Xword uncompressed_size;
@@ -6927,11 +6927,11 @@ decompress_section(struct section *s, unsigned char **buffer, uint64_t *sz) {
 		if (gelf_getchdr(s->scn, &chdr) == NULL)
 		    errx(EXIT_FAILURE, "gelf_getchdr() failed: %s",
 		            elf_errmsg(-1));
-		if (chdr.ch_type != ELFCOMPRESS_ZLIB)
+		if (chdr.ch_type != ELFCOMPRESS_ZLIB) {
 		    warnx("unknown compression type: %d", chdr.ch_type);
+			return (1);
+		}
 		
-		compressed_data_buffer = *buffer;
-		compressed_size = *sz;
 		inflated_size = 0;
 		uncompressed_size = chdr.ch_size;
 		uncompressed_data_buffer = malloc(uncompressed_size);
@@ -6968,17 +6968,17 @@ decompress_section(struct section *s, unsigned char **buffer, uint64_t *sz) {
 		ret = inflateEnd(&strm);
 		if (ret != Z_OK)
 			goto fail;
-		free(*buffer);
-		*buffer = uncompressed_data_buffer;
-		*sz = uncompressed_size;
-		return (1);
+		*ret_buf = uncompressed_data_buffer;
+		*ret_sz = uncompressed_size;
+		return (0);
 		fail:
-			if (strm.msg)
-				warnx("%s", strm.msg);
-			else
-				warnx("ZLIB error: %d", ret);
-			free(uncompressed_data_buffer);
-			return (0);
+		inflateEnd(&strm);
+		if (strm.msg)
+			warnx("%s", strm.msg);
+		else
+			warnx("ZLIB error: %d", ret);
+		free(uncompressed_data_buffer);
+		return (1);
 	}
 	return (1);
 }
@@ -7014,11 +7014,11 @@ hex_dump(struct readelf *re)
 			continue;
 		}
 		addr = s->addr;
-		if (re->options & RE_Z) {
-			decompress_section(s, (unsigned char **) &d->d_buf, &d->d_size);
-		}
 		buf = d->d_buf;
 		sz = d->d_size;
+		if (re->options & RE_Z) {
+			(void)decompress_section(s, d->d_buf, d->d_size, &buf, &sz);
+		}
 		printf("\nHex dump of section '%s':\n", s->name);
 		while (sz > 0) {
 			printf("  0x%8.8jx ", (uintmax_t)addr);
@@ -7077,11 +7077,12 @@ str_dump(struct readelf *re)
 			continue;
 		}
 		found = 0;
+		start = d->d_buf;
+		sz = d->d_size;
 		if (re->options & RE_Z) {
-			decompress_section(s, (unsigned char **) &d->d_buf, &d->d_size);
+			(void)decompress_section(s, d->d_buf, d->d_size, &start, &sz);
 		}
-		start = (unsigned char *) d->d_buf;
-		buf_end = start + d->d_size;
+		buf_end = start + sz;
 		printf("\nString dump of section '%s':\n", s->name);
 		for (;;) {
 			while (start < buf_end && !isprint(*start))
