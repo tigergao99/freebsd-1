@@ -7014,9 +7014,9 @@ hex_dump(struct readelf *re)
 			    s->name);
 			continue;
 		}
-		addr = s->addr;
 		buf = d->d_buf;
 		sz = d->d_size;
+		addr = s->addr;
 		if (re->options & RE_Z) {
 			(void)decompress_section(s, d->d_buf, d->d_size,
 			    &buf, &sz);
