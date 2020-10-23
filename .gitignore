@@ -11,6 +11,13 @@ _.powerpc.*
 _.riscv.*
 _.sparc64.*
 _.sun4v.*
+*.o
+*.po
+*.pico
+*.gz
+*.core
+*.debug
+*.so
 GPATH
 GRTAGS
 GTAGS
