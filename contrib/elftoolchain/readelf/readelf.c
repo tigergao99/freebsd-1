@@ -6911,7 +6911,8 @@ static int decompress_section(struct section *s,
                               unsigned char *compressed_data_buffer,
                               uint64_t compressed_size,
                               unsigned char **ret_buf,
-                              uint64_t *ret_sz) {
+                              uint64_t *ret_sz)
+{
   GElf_Shdr sh;
 
   if (gelf_getshdr(s->scn, &sh) == NULL)
@@ -6988,7 +6989,7 @@ hex_dump(struct readelf *re)
 {
 	struct section *s;
 	Elf_Data *d;
-	uint8_t *buf;
+	uint8_t *buf, *new_buf;
 	size_t sz, nbytes;
 	uint64_t addr;
 	int elferr, i, j;
@@ -7016,8 +7017,11 @@ hex_dump(struct readelf *re)
 		sz = d->d_size;
 		addr = s->addr;
 		if (re->options & RE_Z) {
-			(void)decompress_section(s, d->d_buf, d->d_size,
-			    &buf, &sz);
+			new_buf = NULL;
+			decompress_section(s, d->d_buf, d->d_size,
+			    &new_buf, &sz);
+			if (new_buf)
+				buf = new_buf;
 		}
 		printf("\nHex dump of section '%s':\n", s->name);
 		while (sz > 0) {
@@ -7042,6 +7046,8 @@ hex_dump(struct readelf *re)
 			addr += nbytes;
 			sz -= nbytes;
 		}
+		if (new_buf)
+			free(new_buf);
 	}
 }
 
@@ -7050,7 +7056,7 @@ str_dump(struct readelf *re)
 {
 	struct section *s;
 	Elf_Data *d;
-	unsigned char *start, *end, *buf_end;
+	unsigned char *start, *end, *buf_end, *new_buf;
 	unsigned int len;
 	size_t sz;
 	int i, j, elferr, found;
@@ -7078,8 +7084,11 @@ str_dump(struct readelf *re)
 		start = d->d_buf;
 		sz = d->d_size;
 		if (re->options & RE_Z) {
-			(void)decompress_section(s, d->d_buf, d->d_size,
+			new_buf = NULL;
+			decompress_section(s, d->d_buf, d->d_size,
 			    &start, &sz);
+			if (new_buf)
+				start = new_buf;
 		}
 		buf_end = start + sz;
 		printf("\nString dump of section '%s':\n", s->name);
@@ -7102,6 +7111,8 @@ str_dump(struct readelf *re)
 				break;
 			start = end + 1;
 		}
+		if (new_buf)
+			free(new_buf);
 		if (!found)
 			printf("  No strings found in this section.");
 		putchar('\n');
@@ -7727,6 +7738,7 @@ Usage: %s [options] file...\n\
                            Display DWARF information.\n\
   -x INDEX | --hex-dump=INDEX\n\
                            Display contents of a section as hexadecimal.\n\
+  -z | --decompress        Decompress the contents of a section before displaying it.\n\
   -A | --arch-specific     (accepted, but ignored)\n\
   -D | --use-dynamic       Print the symbol table specified by the DT_SYMTAB\n\
                            entry in the \".dynamic\" section.\n\
