@@ -6912,7 +6912,8 @@ static int decompress_section(struct section *s,
                               unsigned char *compressed_data_buffer,
                               uint64_t compressed_size,
                               unsigned char **ret_buf,
-                              uint64_t *ret_sz) {
+                              uint64_t *ret_sz)
+{
   GElf_Shdr sh;
 
   if (gelf_getshdr(s->scn, &sh) == NULL)
@@ -7018,8 +7019,11 @@ hex_dump(struct readelf *re)
 		sz = d->d_size;
 		addr = s->addr;
 		if (re->options & RE_Z) {
-			(void)decompress_section(s, d->d_buf, d->d_size,
-			    &buf, &sz);
+			new_buf = NULL;
+			decompress_section(s, d->d_buf, d->d_size,
+			    &new_buf, &sz);
+			if (new_buf)
+				buf = new_buf;
 		}
 		printf("\nHex dump of section '%s':\n", s->name);
 		while (sz > 0) {
@@ -7044,7 +7048,8 @@ hex_dump(struct readelf *re)
 			addr += nbytes;
 			sz -= nbytes;
 		}
-		free(new_buf);
+		if (new_buf)
+			free(new_buf);
 	}
 }
 
@@ -7082,8 +7087,11 @@ str_dump(struct readelf *re)
 		start = d->d_buf;
 		sz = d->d_size;
 		if (re->options & RE_Z) {
-			(void)decompress_section(s, d->d_buf, d->d_size,
+			new_buf = NULL;
+			decompress_section(s, d->d_buf, d->d_size,
 			    &start, &sz);
+			if (new_buf)
+				start = new_buf;
 		}
 		buf_end = start + sz;
 		printf("\nString dump of section '%s':\n", s->name);
@@ -7106,7 +7114,8 @@ str_dump(struct readelf *re)
 				break;
 			start = end + 1;
 		}
-		free(new_buf);
+		if (new_buf)
+			free(new_buf);
 		if (!found)
 			printf("  No strings found in this section.");
 		putchar('\n');
