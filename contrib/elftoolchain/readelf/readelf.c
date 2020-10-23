@@ -7089,7 +7089,7 @@ str_dump(struct readelf *re)
 		if (re->options & RE_Z) {
 			new_buf = NULL;
 			decompress_section(s, d->d_buf, d->d_size,
-			    &start, &sz);
+			    &new_buf, &sz);
 			if (new_buf)
 				start = new_buf;
 		}
