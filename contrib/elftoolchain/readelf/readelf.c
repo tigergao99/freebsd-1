@@ -7043,8 +7043,10 @@ hex_dump(struct readelf *re)
 			addr += nbytes;
 			sz -= nbytes;
 		}
-		if (new_buf)
+		if (new_buf) {
 			free(new_buf);
+			new_buf = NULL;
+		}
 	}
 }
 
@@ -7107,8 +7109,10 @@ str_dump(struct readelf *re)
 				break;
 			start = end + 1;
 		}
-		if (new_buf)
+		if (new_buf) {
 			free(new_buf);
+			new_buf = NULL;
+		}
 		if (!found)
 			printf("  No strings found in this section.");
 		putchar('\n');
