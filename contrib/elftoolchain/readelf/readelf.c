@@ -6993,6 +6993,7 @@ hex_dump(struct readelf *re)
 	int elferr, i, j;
 
 	for (i = 1; (size_t) i < re->shnum; i++) {
+		new_buf = NULL;
 		s = &re->sl[i];
 		if (find_dumpop(re, (size_t) i, s->name, HEX_DUMP, -1) == NULL)
 			continue;
@@ -7044,7 +7045,6 @@ hex_dump(struct readelf *re)
 		}
 		if (new_buf) {
 			free(new_buf);
-			new_buf = NULL;
 		}
 	}
 }
@@ -7060,6 +7060,7 @@ str_dump(struct readelf *re)
 	int i, j, elferr, found;
 
 	for (i = 1; (size_t) i < re->shnum; i++) {
+		new_buf = NULL;
 		s = &re->sl[i];
 		if (find_dumpop(re, (size_t) i, s->name, STR_DUMP, -1) == NULL)
 			continue;
@@ -7109,7 +7110,6 @@ str_dump(struct readelf *re)
 		}
 		if (new_buf) {
 			free(new_buf);
-			new_buf = NULL;
 		}
 		if (!found)
 			printf("  No strings found in this section.");
