@@ -7045,7 +7045,6 @@ hex_dump(struct readelf *re)
 		}
 		if (new_buf) {
 			free(new_buf);
-			new_buf = NULL;
 		}
 	}
 }
@@ -7111,7 +7110,6 @@ str_dump(struct readelf *re)
 		}
 		if (new_buf) {
 			free(new_buf);
-			new_buf = NULL;
 		}
 		if (!found)
 			printf("  No strings found in this section.");
