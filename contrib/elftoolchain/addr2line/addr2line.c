@@ -712,16 +712,16 @@ translate(Dwarf_Debug dbg, Elf *e, const char* addrstr)
 	
 	while (true) {
 		/*
-		 * We resume the CU scan from the last place we found a match. Because 
-		 * when we have 2 sequential addresses, and the second one is of the next CU, 
-		 * it is faster to just go to the next CU instead of starting from the beginning.
+		 * We resume the CU scan from the last place we found a match. 
+		 * Because when we have 2 sequential addresses, and the second
+		 * one is of the next CU, it is faster to just go to the next CU
+		 * instead of starting from the beginning.
 		 */
-		ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL, NULL, 
+		ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL, NULL,
 		    &de);
 		if (ret == DW_DLV_NO_ENTRY) {
-			if (curlopc == ~0ULL) {
+			if (curlopc == ~0ULL)
 				goto out;
-			}
 			ret = dwarf_next_cu_header(dbg, NULL, NULL, NULL, NULL, NULL,
 			    &de);
 		}
@@ -761,7 +761,6 @@ next_cu:
 		goto out;
 
 status_ok:
-	
 	switch (dwarf_srclines(die, &lbuf, &lcount, &de)) {
 	case DW_DLV_OK:
 		break;
