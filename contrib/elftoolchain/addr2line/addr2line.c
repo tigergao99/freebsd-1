@@ -408,7 +408,7 @@ culookup(Dwarf_Unsigned addr)
 
 	/* Check if addr is in lookup tree */
 	find.lopc = addr;
-	res = RB_NFIND(cutree, &head, &find);
+	res = RB_NFIND(cutree, &cuhead, &find);
 	if (res != NULL) {
 		if (res->lopc != addr)
 			res = RB_PREV(cutree, &cuhead, res);
