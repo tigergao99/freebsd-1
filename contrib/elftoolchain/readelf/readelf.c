@@ -6948,9 +6948,9 @@ static bool decompress_section(struct section *s,
 		if (ret != Z_OK)
 			goto fail;
 		/*
-			* The section can contain several compressed buffers,
-			* so decompress in a loop until all data is inflated.
-			*/
+		 * The section can contain several compressed buffers,
+		 * so decompress in a loop until all data is inflated.
+		 */
 		while (inflated_size < compressed_size) {
 			strm.next_in = compressed_data_buffer + inflated_size;
 			strm.next_out = uncompressed_data_buffer + inflated_size;
@@ -6970,7 +6970,7 @@ static bool decompress_section(struct section *s,
 		*ret_buf = uncompressed_data_buffer;
 		*ret_sz = uncompressed_size;
 		return (true);
-		fail:
+fail:
 		inflateEnd(&strm);
 		if (strm.msg)
 			warnx("%s", strm.msg);
@@ -7043,9 +7043,7 @@ hex_dump(struct readelf *re)
 			addr += nbytes;
 			sz -= nbytes;
 		}
-		if (new_buf) {
-			free(new_buf);
-		}
+		free(new_buf);
 	}
 }
 
@@ -7108,9 +7106,7 @@ str_dump(struct readelf *re)
 				break;
 			start = end + 1;
 		}
-		if (new_buf) {
-			free(new_buf);
-		}
+		free(new_buf);
 		if (!found)
 			printf("  No strings found in this section.");
 		putchar('\n');
