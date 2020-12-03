@@ -65,9 +65,6 @@ __FBSDID("$FreeBSD$");
 #include <libcasper.h>
 #include <casper/cap_syslog.h>
 
-#include <libcasper.h>
-#include <casper/cap_syslog.h>
-
 #define	SYSLOG_NAMES
 #include <syslog.h>
 
